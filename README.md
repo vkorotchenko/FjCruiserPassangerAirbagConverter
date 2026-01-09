@@ -9,6 +9,7 @@ The FJ cruiser outputs reads the weight of the passenger using 4 sensors( Occupa
 # Input
 
 The input for the controller is CAN bus, the canbus coming from the new seats will let us know 3 things, whether we are buckled up, if the weight is a "child" to disable the seatblet chime and the passanger airbags, or if the weight surpasses the 30Kg limit it will disable the chime but keep the passanger airbag on. This will potentially be expanded to control using a button or K-wire input.
+If using different seats with canbus output you may use this project to read and log can messages using CanHandler::process, or use [Canable](https://canable.io/) along with [CANgaroo](https://github.com/Schildkroet/CANgaroo) to listen to incoming CAN messages.
 
 ![Mustang seat wiring](res/mustang_seats_wiring.png)
 
