@@ -19,10 +19,12 @@ older cars, including the FJ may have a single line for communication between co
 ![MC33290 wiring](res/mc33290_wiring.png)
 
 # Hardware
-for this project I am using the following hardware:
+for this project I am using the following hardware, these can be changed and will work with any arduino board with a MCP2515 chip/ breakout board. to modify the board please fork and mofify the env to match your board, take care to adjust the CS pin used in the CanHandler.h
+
  - [Adafruit Feather M0 Express](https://www.adafruit.com/product/3403)
 - [Adafruit CAN Bus FeatherWing](https://www.adafruit.com/product/5709)
 - [MC33290](https://www.aliexpress.com/item/1005008723003659.html)
+
 
 Wiring diagram: Coming soon
 
