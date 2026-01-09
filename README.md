@@ -1,5 +1,6 @@
 # FjCruiserPassangerAirbagConverter
 Converts the output of mustang seats weight sensors to proper output for the FJ so that the seat sensor works 
+NOTE: this project is still in developlemt phase.
 
 # Output
 The FJ cruiser outputs reads the weight of the passenger using 4 sensors( Occupant classification sensor) at the corners of the seat. We can replicate the input in 2 ways. Option 1 is to replicate the output of the sensors using a potentiometer or resistors. Option 2 is to connect to the k-line (represented as DIA in the diagram below) and replicate the signal coming from both the car and the controller. Option 1 is simpler but requires keeping the origional on board occupancy module. while option 2 requires less pieces but more engineering effort.
