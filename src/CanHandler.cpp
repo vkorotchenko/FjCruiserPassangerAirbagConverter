@@ -46,7 +46,7 @@ CanHandler::CanHandler()
  */
 void CanHandler::setup()
 {
-    while (CAN_OK != CAN.begin(CAN_SPEED)) // TODO move to config
+    while (CAN_OK != CAN.begin(CAN_SPEED))
     {
         SERIAL_PORT_MONITOR.println("CAN init fail, retry...");
         delay(200);
@@ -85,9 +85,6 @@ void CanHandler::logFrame(CAN_FRAME &frame)
 void CanHandler::process()
 {
     static CAN_FRAME frame;
-    static SDO_FRAME sFrame;
-
-    CanObserver *observer;
 
     unsigned char len = 8;
     unsigned char buf[8];
@@ -105,10 +102,25 @@ void CanHandler::process()
         frame.extended = (bool)CAN.isExtendedFrame();
         frame.rtr = CAN.isRemoteRequest();
 
+        if(frame.id == 0) {
+            return;
+        }
+
+
+        if( frame.id == OCS_CAN_ID_1) {
         Logger::info("RECEIVED CAN:%d dlc=%X fid=%X id=%X ide=%X rtr=%X data=%X,%X,%X,%X,%X,%X,%X,%X", 0,
                       frame.length, frame.fid, frame.id, frame.extended, frame.rtr,
                       frame.data.bytes[0], frame.data.bytes[1], frame.data.bytes[2], frame.data.bytes[3],
                       frame.data.bytes[4], frame.data.bytes[5], frame.data.bytes[6], frame.data.bytes[7]);
+        }
+
+        if (frame.id == OCS_CAN_ID_2) {
+        Logger::info("RECEIVED CAN:%d dlc=%X fid=%X id=%X ide=%X rtr=%X data=%X,%X,%X,%X,%X,%X,%X,%X", 0,
+                      frame.length, frame.fid, frame.id, frame.extended, frame.rtr,
+                      frame.data.bytes[0], frame.data.bytes[1], frame.data.bytes[2], frame.data.bytes[3],
+                      frame.data.bytes[4], frame.data.bytes[5], frame.data.bytes[6], frame.data.bytes[7]);
+        }
+
 
 }
 }

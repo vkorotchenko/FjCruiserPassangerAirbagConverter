@@ -1,21 +1,15 @@
 #include <Arduino.h>
 #include "CanHandler.h"
 
-// put function declarations here:
-int myFunction(int, int);
-
 void setup() {
-  // put your setup code here, to run once:
-  int result = myFunction(2, 3);
+  SERIAL_PORT_MONITOR.begin(SERIAL_SPEED);
+  pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(SPI_CS_PIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
 	canHandler.setup();
+  digitalWrite(LED_BUILTIN, LOW);
 }
 
 void loop() {
-
-  	canHandler.process();
-}
-
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
+    canHandler.process();
 }

@@ -33,7 +33,6 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "mcp2515_can.h"
 
-#define SPI_CS_PIN 5
 
 enum SDO_COMMAND
 {
