@@ -39,6 +39,7 @@ CanHandler::CanHandler()
 {
     masterID = 0x05;
     busSpeed = 0;
+    initialized = false;
 }
 
 /*
@@ -52,7 +53,7 @@ void CanHandler::setup()
         delay(200);
     }
 
-
+    initialized = true;
     Logger::info("CAN init ok. Speed = %i", CAN_500KBPS);
 }
 
@@ -136,4 +137,26 @@ void CanHandler::sendFrame(CAN_FRAME &frame)
     //              frame.data.bytes[5], frame.data.bytes[6], frame.data.bytes[7]);
 
     CAN.MCP_CAN::sendMsgBuf(frame.id, frame.extended, 8, frame.data.bytes);
+}
+
+// PassengerStateInput interface implementation
+void CanHandler::processInput(PassengerState& state) {
+    // TODO: Implement CAN reading logic to update passenger state
+    // This would read occupant sensor data from CAN bus and update the state
+    // For now, this is a placeholder for future implementation
+}
+
+bool CanHandler::isInputReady() {
+    return initialized;
+}
+
+// PassengerStateOutput interface implementation
+void CanHandler::applyState(const PassengerState& state) {
+    // TODO: Implement CAN output logic based on passenger state
+    // This would send airbag enable/disable commands via CAN based on passenger state
+    // For now, this is a placeholder for future implementation
+}
+
+bool CanHandler::isOutputReady() {
+    return initialized;
 }

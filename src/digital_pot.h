@@ -5,6 +5,7 @@
 #include <X9C10X.h>
 #include "Logger.h"
 #include "config.h"
+#include "PassengerStateOutput.h"
 
 // Occupant states
 enum OccupantState {
@@ -13,7 +14,7 @@ enum OccupantState {
     OCCUPANT_ADULT = 2     // Adult weight (enable airbag)
 };
 
-class DigitalPotHandler {
+class DigitalPotHandler : public PassengerStateOutput {
 public:
     DigitalPotHandler();
 
@@ -31,6 +32,10 @@ public:
 
     // Get current state
     OccupantState getCurrentState();
+
+    // PassengerStateOutput interface
+    void applyState(const PassengerState& state) override;
+    bool isOutputReady() override;
 
 private:
     X9C10X pot1;  // Front Left

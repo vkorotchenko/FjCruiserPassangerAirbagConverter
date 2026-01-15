@@ -4,21 +4,24 @@
 #include <Arduino.h>
 #include <OBD9141.h>
 #include "Logger.h"
+#include "Handler.h"
+#include "PassengerStateInput.h"
+#include "PassengerStateOutput.h"
 
 // Pin definitions (fixed per user requirements)
 #define KLINE_RX_PIN 10
 #define KLINE_TX_PIN 11
 
-class KLineHandler {
+class KLineHandler : public Handler, public PassengerStateInput, public PassengerStateOutput {
 public:
     KLineHandler();
 
     // Initialization methods
-    void setup();
+    void setup() override;
     bool isInitialized();
 
     // Main processing loop (called from main loop)
-    void process();
+    void process() override;
 
     // Protocol initialization (ISO 9141-2 only)
     bool initProtocol();
@@ -38,6 +41,14 @@ public:
     // Utility methods
     uint8_t getLastResponseLength();
     const uint8_t* getResponseBuffer();
+
+    // PassengerStateInput interface
+    void processInput(PassengerState& state) override;
+    bool isInputReady() override;
+
+    // PassengerStateOutput interface
+    void applyState(const PassengerState& state) override;
+    bool isOutputReady() override;
 
 private:
     OBD9141 obd;

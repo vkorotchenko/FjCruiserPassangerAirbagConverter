@@ -189,3 +189,25 @@ void KLineHandler::logMessage(const char* prefix, uint8_t* data, uint8_t length)
 
     Logger::debug("%s", logBuffer);
 }
+
+// PassengerStateInput interface implementation
+void KLineHandler::processInput(PassengerState& state) {
+    // TODO: Implement K-line reading logic to update passenger state
+    // This would read sensor data from K-line and update the state accordingly
+    // For now, this is a placeholder for future implementation
+}
+
+bool KLineHandler::isInputReady() {
+    return initialized;
+}
+
+// PassengerStateOutput interface implementation
+void KLineHandler::applyState(const PassengerState& state) {
+    // TODO: Implement K-line output logic based on passenger state
+    // This would send commands via K-line based on the passenger state
+    // For now, this is a placeholder for future implementation
+}
+
+bool KLineHandler::isOutputReady() {
+    return initialized;
+}

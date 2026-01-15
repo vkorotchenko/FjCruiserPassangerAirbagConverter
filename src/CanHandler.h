@@ -27,9 +27,11 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define CAN_HANDLER_H_
 
 #include <Arduino.h>
-#include "evTimer.h"
 #include "Logger.h"
 #include "can_common.h"
+#include "Handler.h"
+#include "PassengerStateInput.h"
+#include "PassengerStateOutput.h"
 
 #include "mcp2515_can.h"
 
@@ -77,26 +79,35 @@ private:
     int nodeID;
 };
 
-class CanHandler
+class CanHandler : public Handler, public PassengerStateInput, public PassengerStateOutput
 {
 public:
 
     CanHandler( );
-    void setup();
+    void setup() override;
     uint32_t getBusSpeed();
-    void process();
+    void process() override;
     void prepareOutputFrame(CAN_FRAME *frame, uint32_t id);
 
     void sendFrame(CAN_FRAME& frame);
+
+    // PassengerStateInput interface
+    void processInput(PassengerState& state) override;
+    bool isInputReady() override;
+
+    // PassengerStateOutput interface
+    void applyState(const PassengerState& state) override;
+    bool isOutputReady() override;
 
 protected:
 
 private:
 
     uint32_t busSpeed;
+    bool initialized;
 
     void logFrame(CAN_FRAME& frame);
-    int masterID; //what is our ID as the master node?      
+    int masterID; //what is our ID as the master node?
 };
 
 extern CanHandler canHandler;

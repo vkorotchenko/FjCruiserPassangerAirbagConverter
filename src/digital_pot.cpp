@@ -134,3 +134,20 @@ void DigitalPotHandler::setPositionIndividual(uint8_t potIndex, uint8_t position
 OccupantState DigitalPotHandler::getCurrentState() {
     return currentState;
 }
+
+// PassengerStateOutput interface implementation
+void DigitalPotHandler::applyState(const PassengerState& state) {
+    // Map PassengerState to OccupantState and apply
+    if (!state.hasPassenger()) {
+        setOccupantState(OCCUPANT_OFF);
+    } else if (state.getPassengerType() == CHILD) {
+        setOccupantState(OCCUPANT_CHILD);
+    } else if (state.getPassengerType() == ADULT) {
+        setOccupantState(OCCUPANT_ADULT);
+    }
+}
+
+bool DigitalPotHandler::isOutputReady() {
+    // Digital pot is always ready once setup() is called
+    return true;
+}

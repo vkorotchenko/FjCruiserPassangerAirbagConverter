@@ -48,6 +48,26 @@
 #define DPOT_POSITION_CHILD 50  // ~50% resistance - Child weight
 #define DPOT_POSITION_ADULT 99  // Maximum resistance - Adult weight
 
+// ========================================
+// Button Input Configuration
+// ========================================
+#define BUTTON_PIN          2       // Arduino pin for button input
+#define BUTTON_DEBOUNCE_MS  50      // Debounce delay in milliseconds
+#define BUTTON_ACTIVE_LOW   1       // 1 = button connects to GND, 0 = button connects to VCC
+
+// ========================================
+// Passenger State Input/Output Configuration
+// ========================================
+// Enable/disable input sources (read passenger state from)
+#define USE_KLINE_INPUT     1    // 1 = enabled, 0 = disabled
+#define USE_CAN_INPUT       1    // 1 = enabled, 0 = disabled
+#define USE_BUTTON_INPUT    1    // 1 = enabled, 0 = disabled
+
+// Enable/disable output targets (send passenger state to)
+#define USE_KLINE_OUTPUT    1    // 1 = enabled, 0 = disabled
+#define USE_CAN_OUTPUT      1    // 1 = enabled, 0 = disabled
+#define USE_DPOT_OUTPUT     1    // 1 = enabled, 0 = disabled
+
 #endif /* CONFIG_H_ */
 
 
