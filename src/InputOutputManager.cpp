@@ -11,6 +11,8 @@ InputOutputManager::InputOutputManager()
     // Initialize arrays to null
     for (uint8_t i = 0; i < 3; i++) {
         inputs[i] = nullptr;
+    }
+    for (uint8_t i = 0; i < 4; i++) {
         outputs[i] = nullptr;
     }
 
@@ -55,6 +57,11 @@ void InputOutputManager::initializeOutputs() {
 #if USE_DPOT_OUTPUT
     outputs[outputCount++] = &digitalPotHandler;
     Logger::info("IO Manager: Digital Pot output enabled");
+#endif
+
+#if USE_RELAY_OUTPUT
+    outputs[outputCount++] = &seatbeltRelay;
+    Logger::info("IO Manager: Relay output enabled");
 #endif
 
     Logger::info("IO Manager: %d output target(s) configured", outputCount);

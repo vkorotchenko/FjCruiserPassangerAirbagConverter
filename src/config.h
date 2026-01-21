@@ -56,6 +56,12 @@
 #define BUTTON_ACTIVE_LOW   1       // 1 = button connects to GND, 0 = button connects to VCC
 
 // ========================================
+// Relay Output Configuration
+// ========================================
+#define RELAY_PIN           3       // Arduino pin for relay control
+#define RELAY_ACTIVE_HIGH   1       // 1 = relay activates on HIGH, 0 = relay activates on LOW
+
+// ========================================
 // Passenger State Input/Output Configuration
 // ========================================
 // Enable/disable input sources (read passenger state from)
@@ -67,6 +73,7 @@
 #define USE_KLINE_OUTPUT    1    // 1 = enabled, 0 = disabled
 #define USE_CAN_OUTPUT      1    // 1 = enabled, 0 = disabled
 #define USE_DPOT_OUTPUT     1    // 1 = enabled, 0 = disabled
+#define USE_RELAY_OUTPUT    1    // 1 = enabled, 0 = disabled
 
 #endif /* CONFIG_H_ */
 

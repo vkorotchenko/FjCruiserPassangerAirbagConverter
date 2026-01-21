@@ -22,6 +22,10 @@
 #include "digital_pot.h"
 #endif
 
+#if USE_RELAY_OUTPUT
+#include "SeatbeltRelay.h"
+#endif
+
 // Array of handlers for polymorphic processing
 Handler* handlers[3];  // Max 3 handlers (CAN, K-line, Button)
 uint8_t handlerCount = 0;
@@ -67,6 +71,10 @@ void setup() {
 	digitalPotHandler.setup();
 #endif
 
+#if USE_RELAY_OUTPUT
+	seatbeltRelay.setup();
+#endif
+
 	Logger::info("Registered %d handler(s) for polymorphic processing", handlerCount);
 
 	// Log input/output configuration
@@ -74,10 +82,11 @@ void setup() {
 		USE_KLINE_INPUT ? "K-line " : "",
 		USE_CAN_INPUT ? "CAN " : "",
 		USE_BUTTON_INPUT ? "Button " : "");
-	Logger::info("Output targets: %s%s%s",
+	Logger::info("Output targets: %s%s%s%s",
 		USE_KLINE_OUTPUT ? "K-line " : "",
 		USE_CAN_OUTPUT ? "CAN " : "",
-		USE_DPOT_OUTPUT ? "DigitalPot " : "");
+		USE_DPOT_OUTPUT ? "DigitalPot " : "",
+		USE_RELAY_OUTPUT ? "Relay " : "");
 
 	digitalWrite(LED_BUILTIN, LOW);
 	Logger::info("=== Setup Complete ===");

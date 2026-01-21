@@ -23,6 +23,10 @@
 #include "digital_pot.h"
 #endif
 
+#if USE_RELAY_OUTPUT
+#include "SeatbeltRelay.h"
+#endif
+
 /**
  * Manages passenger state inputs and outputs based on configuration
  * Provides a unified interface to process all enabled input sources
@@ -57,7 +61,7 @@ public:
 private:
     // Arrays to store active inputs and outputs
     PassengerStateInput* inputs[3];    // Max 3 inputs (K-line, CAN, Button)
-    PassengerStateOutput* outputs[3];  // Max 3 outputs (K-line, CAN, DigitalPot)
+    PassengerStateOutput* outputs[4];  // Max 4 outputs (K-line, CAN, DigitalPot, Relay)
 
     uint8_t inputCount;
     uint8_t outputCount;
