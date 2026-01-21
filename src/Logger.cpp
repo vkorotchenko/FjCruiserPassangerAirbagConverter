@@ -120,10 +120,10 @@ void Logger::log(LogLevel level, const char *format, va_list args) {
 
     switch (level) {
     case Debug:
-        SERIAL_PORT_MONITOR.print("DEBUG");
+        SERIAL_PORT_MONITOR.print("DEBUG: ");
         break;
     case Info:
-        SERIAL_PORT_MONITOR.print("INFO");
+        SERIAL_PORT_MONITOR.print("INFO: ");
         break;
     }
 
