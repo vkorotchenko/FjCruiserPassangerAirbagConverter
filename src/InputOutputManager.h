@@ -36,6 +36,7 @@ class InputOutputManager {
 public:
     InputOutputManager();
 
+    void begin();
     /**
      * Process all enabled input sources and update passenger state
      * Call this regularly from the main loop

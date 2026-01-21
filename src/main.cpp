@@ -31,20 +31,19 @@ Handler* handlers[3];  // Max 3 handlers (CAN, K-line, Button)
 uint8_t handlerCount = 0;
 
 void setup() {
-	// Initialize USB Serial for logging/debugging
-	Serial.begin(SERIAL_SPEED);
-	// while (!Serial) {
-	// 	delay(10);
-	// }
-
 	SERIAL_PORT_MONITOR.begin(SERIAL_SPEED);
-
+	while (!SERIAL_PORT_MONITOR) {
+		delay(10);
+	}
+SERIAL_PORT_MONITOR.println("TEST");
 	Logger::info("=== Passenger Airbag Converter Starting ===");
 
 	// Setup LED and SPI pins
 	pinMode(LED_BUILTIN, OUTPUT);
 	pinMode(SPI_CS_PIN, OUTPUT);
 	digitalWrite(LED_BUILTIN, HIGH);
+
+	ioManager.begin();
 
 	// Initialize handlers based on configuration and add to handlers array
 #if USE_CAN_INPUT || USE_CAN_OUTPUT

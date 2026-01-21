@@ -15,7 +15,9 @@ InputOutputManager::InputOutputManager()
     for (uint8_t i = 0; i < 4; i++) {
         outputs[i] = nullptr;
     }
+}
 
+void InputOutputManager::begin() {
     initializeInputs();
     initializeOutputs();
 }
