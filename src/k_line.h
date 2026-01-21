@@ -61,6 +61,8 @@ private:
     bool initialized;
     uint8_t lastResponseLength;
     unsigned long lastCommunicationTime;
+    unsigned long lastRequestTime;
+    PassengerState currentState;
 
     void logMessage(const char* prefix, uint8_t* data, uint8_t length);
     void updateSimulatorAnswers(const PassengerState& state);

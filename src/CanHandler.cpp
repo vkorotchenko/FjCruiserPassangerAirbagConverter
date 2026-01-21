@@ -40,6 +40,7 @@ CanHandler::CanHandler()
     masterID = 0x05;
     busSpeed = 0;
     initialized = false;
+    lastTransmitTime = 0;
 }
 
 /*
@@ -121,9 +122,13 @@ void CanHandler::process()
                       frame.data.bytes[0], frame.data.bytes[1], frame.data.bytes[2], frame.data.bytes[3],
                       frame.data.bytes[4], frame.data.bytes[5], frame.data.bytes[6], frame.data.bytes[7]);
         }
+    }
 
-
-}
+    // Periodic transmission: Send state every 1000ms if initialized
+    if (initialized && (millis() - lastTransmitTime >= CAN_TRANSMIT_INTERVAL)) {
+        sendPeriodicState();
+        lastTransmitTime = millis();
+    }
 }
 
 
@@ -152,11 +157,48 @@ bool CanHandler::isInputReady() {
 
 // PassengerStateOutput interface implementation
 void CanHandler::applyState(const PassengerState& state) {
-    // TODO: Implement CAN output logic based on passenger state
-    // This would send airbag enable/disable commands via CAN based on passenger state
-    // For now, this is a placeholder for future implementation
+    // Store the current state for periodic transmission
+    currentState = state;
+
+    // Send immediately on state change, then process() will handle periodic sends
+    sendPeriodicState();
+    lastTransmitTime = millis();
+
+    Logger::debug("CAN: State updated - Buckled: %d, Type: %d",
+                  state.isBuckled(), state.getPassengerType());
 }
 
 bool CanHandler::isOutputReady() {
     return initialized;
+}
+
+// Send passenger state via CAN
+void CanHandler::sendPeriodicState() {
+    if (!initialized) {
+        return;
+    }
+
+    // Create CAN frame with passenger state
+    CAN_FRAME frame;
+    frame.id = OCS_CAN_ID_1;  // Using first OCS CAN ID for output
+    frame.extended = false;
+    frame.rtr = false;
+    frame.length = 8;
+
+    // Encode passenger state in CAN message
+    // Byte 0: Seatbelt status (0 = unbuckled, 1 = buckled)
+    frame.data.bytes[0] = currentState.isBuckled() ? 1 : 0;
+
+    // Byte 1: Passenger type (0 = none, 1 = child, 2 = adult)
+    frame.data.bytes[1] = (uint8_t)currentState.getPassengerType();
+
+    // Bytes 2-7: Reserved/padding
+    for (int i = 2; i < 8; i++) {
+        frame.data.bytes[i] = 0;
+    }
+
+    sendFrame(frame);
+
+    Logger::debug("CAN: Sent state - ID: 0x%X, Buckled: %d, Type: %d",
+                  frame.id, frame.data.bytes[0], frame.data.bytes[1]);
 }

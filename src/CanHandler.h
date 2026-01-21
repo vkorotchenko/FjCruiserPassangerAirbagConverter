@@ -106,7 +106,13 @@ private:
     uint32_t busSpeed;
     bool initialized;
 
+    // Periodic transmission timing
+    unsigned long lastTransmitTime;
+    static const unsigned long CAN_TRANSMIT_INTERVAL = 1000;  // 1000ms interval
+    PassengerState currentState;
+
     void logFrame(CAN_FRAME& frame);
+    void sendPeriodicState();
     int masterID; //what is our ID as the master node?
 };
 

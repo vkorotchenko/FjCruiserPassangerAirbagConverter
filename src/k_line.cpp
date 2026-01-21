@@ -9,6 +9,7 @@ KLineHandler::KLineHandler()
     : initialized(false)
     , lastResponseLength(0)
     , lastCommunicationTime(0)
+    , lastRequestTime(0)
 {
 }
 
@@ -215,7 +216,8 @@ bool KLineHandler::isInputReady() {
 
 // PassengerStateOutput interface implementation
 void KLineHandler::applyState(const PassengerState& state) {
-    // Update simulator answers based on current passenger state
+    // Store current state and update simulator answers
+    currentState = state;
     updateSimulatorAnswers(state);
 
     Logger::debug("K-line: Updated simulator - Buckled: %d, Type: %d",
