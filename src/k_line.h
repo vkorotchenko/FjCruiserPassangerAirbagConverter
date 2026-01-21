@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <OBD9141.h>
+#include <OBD9141sim.h>
 #include "Logger.h"
 #include "Handler.h"
 #include "PassengerStateInput.h"
@@ -11,6 +12,10 @@
 // Pin definitions (fixed per user requirements)
 #define KLINE_RX_PIN 10
 #define KLINE_TX_PIN 11
+
+// Custom PIDs for passenger airbag system (Mode 0x01)
+#define PID_SEATBELT_STATUS 0x60    // 0 = unbuckled, 1 = buckled
+#define PID_PASSENGER_TYPE  0x61    // 0 = none, 1 = child, 2 = adult
 
 class KLineHandler : public Handler, public PassengerStateInput, public PassengerStateOutput {
 public:
@@ -52,11 +57,13 @@ public:
 
 private:
     OBD9141 obd;
+    OBD9141sim obdSim;
     bool initialized;
     uint8_t lastResponseLength;
     unsigned long lastCommunicationTime;
 
     void logMessage(const char* prefix, uint8_t* data, uint8_t length);
+    void updateSimulatorAnswers(const PassengerState& state);
 };
 
 // Global singleton instance (following CanHandler pattern)

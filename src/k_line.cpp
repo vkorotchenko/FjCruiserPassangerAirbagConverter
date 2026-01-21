@@ -16,10 +16,21 @@ KLineHandler::KLineHandler()
 void KLineHandler::setup() {
     Logger::info("K-line: Initializing...");
 
-    // Configure K-line serial port with pins
+    // Configure K-line serial port with pins for both client and simulator
     obd.begin(Serial1, KLINE_RX_PIN, KLINE_TX_PIN);
 
+    // Initialize simulator mode for responding to requests
+    obdSim.begin(Serial1, KLINE_RX_PIN, KLINE_TX_PIN);
+    obdSim.keep_init_state(true);
+    obdSim.initialize();
+
+    // Set initial answers (default: no passenger, unbuckled)
+    obdSim.setAnswer(0x01, PID_SEATBELT_STATUS, (uint8_t)0);
+    obdSim.setAnswer(0x01, PID_PASSENGER_TYPE, (uint8_t)0);
+
     Logger::info("K-line: Serial port configured on pins RX=%d, TX=%d", KLINE_RX_PIN, KLINE_TX_PIN);
+    Logger::info("K-line: Simulator mode enabled with PIDs 0x%02X (seatbelt), 0x%02X (passenger type)",
+                 PID_SEATBELT_STATUS, PID_PASSENGER_TYPE);
 }
 
 // Check initialization status
@@ -163,13 +174,14 @@ const uint8_t* KLineHandler::getResponseBuffer() {
 
 // Main processing loop
 void KLineHandler::process() {
+    // Process simulator - handles incoming requests and sends responses
+    obdSim.loop();
+
     // Check for communication timeout
     if (initialized && (millis() - lastCommunicationTime > KLINE_TIMEOUT)) {
         Logger::debug("K-line: Communication timeout detected");
         // Could attempt re-initialization here if needed
     }
-
-    // Add any periodic processing here
 }
 
 // Log K-line message in hex format
@@ -203,11 +215,24 @@ bool KLineHandler::isInputReady() {
 
 // PassengerStateOutput interface implementation
 void KLineHandler::applyState(const PassengerState& state) {
-    // TODO: Implement K-line output logic based on passenger state
-    // This would send commands via K-line based on the passenger state
-    // For now, this is a placeholder for future implementation
+    // Update simulator answers based on current passenger state
+    updateSimulatorAnswers(state);
+
+    Logger::debug("K-line: Updated simulator - Buckled: %d, Type: %d",
+                  state.isBuckled(), state.getPassengerType());
 }
 
 bool KLineHandler::isOutputReady() {
-    return initialized;
+    return true;  // Simulator is always ready to respond
+}
+
+// Update simulator answers based on passenger state
+void KLineHandler::updateSimulatorAnswers(const PassengerState& state) {
+    // Update seatbelt status (0 = unbuckled, 1 = buckled)
+    uint8_t seatbeltStatus = state.isBuckled() ? 1 : 0;
+    obdSim.setAnswer(0x01, PID_SEATBELT_STATUS, seatbeltStatus);
+
+    // Update passenger type (0 = none, 1 = child, 2 = adult)
+    uint8_t passengerType = (uint8_t)state.getPassengerType();
+    obdSim.setAnswer(0x01, PID_PASSENGER_TYPE, passengerType);
 }
