@@ -33,9 +33,9 @@ uint8_t handlerCount = 0;
 void setup() {
 	// Initialize USB Serial for logging/debugging
 	Serial.begin(SERIAL_SPEED);
-	while (!Serial) {
-		delay(10);
-	}
+	// while (!Serial) {
+	// 	delay(10);
+	// }
 
 	SERIAL_PORT_MONITOR.begin(SERIAL_SPEED);
 

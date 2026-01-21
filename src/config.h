@@ -66,14 +66,14 @@
 // ========================================
 // Enable/disable input sources (read passenger state from)
 #define USE_KLINE_INPUT     1    // 1 = enabled, 0 = disabled
-#define USE_CAN_INPUT       1    // 1 = enabled, 0 = disabled
-#define USE_BUTTON_INPUT    1    // 1 = enabled, 0 = disabled
+#define USE_CAN_INPUT       0    // 1 = enabled, 0 = disabled
+#define USE_BUTTON_INPUT    0    // 1 = enabled, 0 = disabled
 
 // Enable/disable output targets (send passenger state to)
 #define USE_KLINE_OUTPUT    1    // 1 = enabled, 0 = disabled
-#define USE_CAN_OUTPUT      1    // 1 = enabled, 0 = disabled
-#define USE_DPOT_OUTPUT     1    // 1 = enabled, 0 = disabled
-#define USE_RELAY_OUTPUT    1    // 1 = enabled, 0 = disabled
+#define USE_CAN_OUTPUT      0    // 1 = enabled, 0 = disabled
+#define USE_DPOT_OUTPUT     0    // 1 = enabled, 0 = disabled
+#define USE_RELAY_OUTPUT    0    // 1 = enabled, 0 = disabled
 
 #endif /* CONFIG_H_ */
 
