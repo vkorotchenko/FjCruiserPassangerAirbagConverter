@@ -1,6 +1,8 @@
 #ifndef CONFIG_H_
 #define CONFIG_H_
 
+// Serial port for USB debugging/logging
+#define SERIAL_PORT_MONITOR Serial
 
 #define SERIAL_SPEED 115200
 
@@ -25,7 +27,7 @@
 // Potentiometer 1 (Front Left)
 #define DPOT1_CS_PIN 6       // Chip Select
 #define DPOT1_INC_PIN 9      // Increment (Pulse)
-#define DPOT1_UD_PIN 5       // Up/Down (Direction)
+#define DPOT1_UD_PIN 4       // Up/Down (Direction)
 
 // Potentiometer 2 (Front Right)
 #define DPOT2_CS_PIN A0      // Chip Select
