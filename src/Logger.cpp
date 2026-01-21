@@ -115,15 +115,15 @@ boolean Logger::isDebug() {
  */
 void Logger::log(LogLevel level, const char *format, va_list args) {
     lastLogTime = millis();
-    Serial.print(lastLogTime);
-    Serial.print(" - ");
+    SERIAL_PORT_MONITOR.print(lastLogTime);
+    SERIAL_PORT_MONITOR.print(" - ");
 
     switch (level) {
     case Debug:
-        Serial.print("DEBUG");
+        SERIAL_PORT_MONITOR.print("DEBUG");
         break;
     case Info:
-        Serial.print("INFO");
+        SERIAL_PORT_MONITOR.print("INFO");
         break;
     }
 
@@ -155,70 +155,70 @@ void Logger::logMessage(const char *format, va_list args) {
             if (*format == '\0')
                 break;
             if (*format == '%') {
-                Serial.print(*format);
+                SERIAL_PORT_MONITOR.print(*format);
                 continue;
             }
             if (*format == 's') {
                 register char *s = (char *) va_arg( args, int );
-                Serial.print(s);
+                SERIAL_PORT_MONITOR.print(s);
                 continue;
             }
             if (*format == 'd' || *format == 'i') {
-                Serial.print(va_arg( args, int ), DEC);
+                SERIAL_PORT_MONITOR.print(va_arg( args, int ), DEC);
                 continue;
             }
             if (*format == 'f') {
-                Serial.print(va_arg( args, double ), 2);
+                SERIAL_PORT_MONITOR.print(va_arg( args, double ), 2);
                 continue;
             }
             if (*format == 'x') {
-                Serial.print(va_arg( args, int ), HEX);
+                SERIAL_PORT_MONITOR.print(va_arg( args, int ), HEX);
                 continue;
             }
             if (*format == 'X') {
-                Serial.print("0x");
-                Serial.print(va_arg( args, int ), HEX);
+                SERIAL_PORT_MONITOR.print("0x");
+                SERIAL_PORT_MONITOR.print(va_arg( args, int ), HEX);
                 continue;
             }
             if (*format == 'b') {
-                Serial.print(va_arg( args, int ), BIN);
+                SERIAL_PORT_MONITOR.print(va_arg( args, int ), BIN);
                 continue;
             }
             if (*format == 'B') {
-                Serial.print("0b");
-                Serial.print(va_arg( args, int ), BIN);
+                SERIAL_PORT_MONITOR.print("0b");
+                SERIAL_PORT_MONITOR.print(va_arg( args, int ), BIN);
                 continue;
             }
             if (*format == 'l') {
-                Serial.print(va_arg( args, long ), DEC);
+                SERIAL_PORT_MONITOR.print(va_arg( args, long ), DEC);
                 continue;
             }
 
             if (*format == 'c') {
-                Serial.print(va_arg( args, int ));
+                SERIAL_PORT_MONITOR.print(va_arg( args, int ));
                 continue;
             }
             if (*format == 't') {
                 if (va_arg( args, int ) == 1) {
-                    Serial.print("T");
+                    SERIAL_PORT_MONITOR.print("T");
                 } else {
-                    Serial.print("F");
+                    SERIAL_PORT_MONITOR.print("F");
                 }
                 continue;
             }
             if (*format == 'T') {
                 if (va_arg( args, int ) == 1) {
-                    Serial.print("true");
+                    SERIAL_PORT_MONITOR.print("true");
                 } else {
-                    Serial.print("false");
+                    SERIAL_PORT_MONITOR.print("false");
                 }
                 continue;
             }
 
         }
-        Serial.print(*format);
+        SERIAL_PORT_MONITOR.print(*format);
     }
-    Serial.println();
+    SERIAL_PORT_MONITOR.println();
 }
 
 
