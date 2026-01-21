@@ -33,7 +33,7 @@
 class Logger {
 public:
     enum LogLevel {
-        Debug = 0, Info = 1
+        Debug = 2, Info = 1
     };
     static void debug(const char *, ...);
 

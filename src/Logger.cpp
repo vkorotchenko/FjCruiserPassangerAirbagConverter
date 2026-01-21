@@ -26,7 +26,7 @@
 
 #include "Logger.h"
 
-Logger::LogLevel Logger::logLevel = Logger::Info;
+Logger::LogLevel Logger::logLevel = Logger::Debug;
 uint32_t Logger::lastLogTime = 0;
 
 /*
@@ -35,7 +35,7 @@ uint32_t Logger::lastLogTime = 0;
  *
  */
 void Logger::debug(const char *message, ...) {
-    if (logLevel > Debug)
+    if (logLevel != Debug)
         return;
     va_list args;
     va_start(args, message);
@@ -48,8 +48,6 @@ void Logger::debug(const char *message, ...) {
  * printf() style, see Logger::log()
  */
 void Logger::info(const char *message, ...) {
-    if (logLevel > Info)
-        return;
     va_list args;
     va_start(args, message);
     Logger::log(Info, message, args);

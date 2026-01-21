@@ -205,13 +205,11 @@ void KLineHandler::logMessage(const char* prefix, uint8_t* data, uint8_t length)
 
 // PassengerStateInput interface implementation
 void KLineHandler::processInput(PassengerState& state) {
-    // TODO: Implement K-line reading logic to update passenger state
-    // This would read sensor data from K-line and update the state accordingly
-    // For now, this is a placeholder for future implementation
+    obdSim.loop();
 }
 
 bool KLineHandler::isInputReady() {
-    return initialized;
+    return true;
 }
 
 // PassengerStateOutput interface implementation

@@ -35,7 +35,7 @@ void setup() {
 	while (!SERIAL_PORT_MONITOR) {
 		delay(10);
 	}
-SERIAL_PORT_MONITOR.println("TEST");
+
 	Logger::info("=== Passenger Airbag Converter Starting ===");
 
 	// Setup LED and SPI pins
@@ -103,12 +103,12 @@ void loop() {
 	ioManager.processInputs(passengerState);
 
 	// If state has changed, apply to all outputs
-	if (passengerState.hasChanged()) {
+	// if (passengerState.hasChanged()) {
 		Logger::info("Passenger state changed - Buckled: %d, Type: %d",
 			passengerState.isBuckled(),
 			passengerState.getPassengerType());
 
 		ioManager.applyOutputs(passengerState);
 		passengerState.clearChanged();
-	}
+	// }
 }
