@@ -10,8 +10,12 @@
 #include "CanHandler.h"
 #endif
 
-#if USE_KLINE_INPUT || USE_KLINE_OUTPUT
-#include "k_line.h"
+#if USE_KLINE_INPUT
+#include "KLineInput.h"
+#endif
+
+#if USE_KLINE_OUTPUT
+#include "KLineOutput.h"
 #endif
 
 #if USE_BUTTON_INPUT
@@ -27,7 +31,7 @@
 #endif
 
 // Array of handlers for polymorphic processing
-Handler* handlers[3];  // Max 3 handlers (CAN, K-line, Button)
+Handler* handlers[4];  // Max 4 handlers (CAN, K-line Input, K-line Output, Button)
 uint8_t handlerCount = 0;
 
 void setup() {
@@ -51,14 +55,19 @@ void setup() {
 	canHandler.setup();
 #endif
 
-#if USE_KLINE_INPUT || USE_KLINE_OUTPUT
-	handlers[handlerCount++] = &kLineHandler;
-	kLineHandler.setup();
+#if USE_KLINE_INPUT
+	handlers[handlerCount++] = &kLineInput;
+	kLineInput.setup();
 
 	// Initialize K-line protocol
-	if (!kLineHandler.initProtocol()) {
-		Logger::info("K-line initialization failed");
+	if (!kLineInput.initProtocol()) {
+		Logger::info("K-line input initialization failed");
 	}
+#endif
+
+#if USE_KLINE_OUTPUT
+	handlers[handlerCount++] = &kLineOutput;
+	kLineOutput.setup();
 #endif
 
 #if USE_BUTTON_INPUT
