@@ -7,8 +7,12 @@
 #include "PassengerStateInput.h"
 #include "PassengerStateOutput.h"
 
-#if USE_KLINE_INPUT || USE_KLINE_OUTPUT
-#include "k_line.h"
+#if USE_KLINE_INPUT
+#include "KLineInput.h"
+#endif
+
+#if USE_KLINE_OUTPUT
+#include "KLineOutput.h"
 #endif
 
 #if USE_CAN_INPUT || USE_CAN_OUTPUT

@@ -26,7 +26,7 @@ void InputOutputManager::initializeInputs() {
     Logger::info("IO Manager: Initializing inputs...");
 
 #if USE_KLINE_INPUT
-    inputs[inputCount++] = &kLineHandler;
+    inputs[inputCount++] = &kLineInput;
     Logger::info("IO Manager: K-line input enabled");
 #endif
 
@@ -47,7 +47,7 @@ void InputOutputManager::initializeOutputs() {
     Logger::info("IO Manager: Initializing outputs...");
 
 #if USE_KLINE_OUTPUT
-    outputs[outputCount++] = &kLineHandler;
+    outputs[outputCount++] = &kLineOutput;
     Logger::info("IO Manager: K-line output enabled");
 #endif
 
