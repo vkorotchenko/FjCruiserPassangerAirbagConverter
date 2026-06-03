@@ -1,0 +1,492 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "metadata": {
+    "title": "Vehicle Communication Protocol & Occupant-Classification Database",
+    "description": "Maps car make / model / year-range to the diagnostic/communication protocol they use, and records the message IDs and signal values relevant to passenger-airbag / occupant-classification (OCS) conversion. Built for the FjCruiserPassangerAirbagConverter project.",
+    "version": "0.1.0",
+    "lastUpdated": "2026-06-03",
+    "confidenceLegend": {
+      "project": "Taken directly from this repository's source (config.h / k_line.h). Authoritative for this build.",
+      "standard": "Defined by a public standard (SAE J1979 / ISO 15765-4 / ISO 9141-2). High confidence.",
+      "documented": "From a publicly available service/repair manual or DTC reference. High confidence.",
+      "inferred": "Reasoned from make/model/year and protocol transition timelines. Verify on the vehicle before relying on it.",
+      "unknown": "Not publicly documented. Reverse-engineering on the specific vehicle required. Value left null."
+    },
+    "notes": [
+      "Bus-level diagnostic protocol (how a scan tool talks to the powertrain over the OBD-II port) is distinct from the in-car module bus that actually carries occupant/airbag data. Both are recorded where known.",
+      "Many 2004-2008 vehicles are 'hybrid': CAN (ISO 15765-4) for emissions/powertrain at the OBD-II port, but a legacy K-line (ISO 9141-2 / ISO 14230) retained for body modules such as the airbag/OCS ECU. The FJ Cruiser is one of these.",
+      "Occupant-classification frame IDs and byte encodings are vehicle-specific and almost never published. Only the FJ Cruiser values here come from this project; other vehicles list standard diagnostic addressing and leave proprietary OCS frame details null."
+    ],
+    "sources": [
+      "SAE J1979 / ISO 15765-4 OBD-II standards",
+      "ISO 9141-2 and ISO 14230-4 (KWP2000) K-line standards",
+      "2007 Toyota FJ Cruiser Repair Manual - Supplemental Restraint System / Occupant Classification System (purefjcruiser.com)",
+      "OBD2 protocols by vehicle make and model (obdplanet.com, obdtester.com)",
+      "This repository: src/config.h, src/k_line.h"
+    ]
+  },
+
+  "protocols": {
+    "iso9141-2": {
+      "name": "ISO 9141-2",
+      "family": "K-line",
+      "wires": ["K-line (bidirectional)", "L-line (optional init)"],
+      "busSpeedKbps": 10.4,
+      "initialization": "5-baud slow init (address 0x33)",
+      "physicalLayer": "Single-wire, 12V-referenced (logic-level shifter such as MC33290 required for an MCU)",
+      "obdPins": [7, 15],
+      "typicalRegion": "Older European & Asian vehicles, and Asian-built body modules",
+      "usedByThisProject": true
+    },
+    "iso14230-4-kwp-slow": {
+      "name": "ISO 14230-4 (KWP2000)",
+      "family": "K-line",
+      "wires": ["K-line"],
+      "busSpeedKbps": 10.4,
+      "initialization": "5-baud slow init",
+      "obdPins": [7, 15],
+      "typicalRegion": "European & Asian, late 1990s-2000s"
+    },
+    "iso14230-4-kwp-fast": {
+      "name": "ISO 14230-4 (KWP2000)",
+      "family": "K-line",
+      "wires": ["K-line"],
+      "busSpeedKbps": 10.4,
+      "initialization": "Fast init (wake-up pulse)",
+      "obdPins": [7, 15],
+      "typicalRegion": "European & Asian, 2000s"
+    },
+    "j1850-pwm": {
+      "name": "SAE J1850 PWM",
+      "family": "J1850",
+      "busSpeedKbps": 41.6,
+      "obdPins": [2, 10],
+      "typicalRegion": "Ford (North America), 1996-2008"
+    },
+    "j1850-vpw": {
+      "name": "SAE J1850 VPW",
+      "family": "J1850",
+      "busSpeedKbps": 10.4,
+      "obdPins": [2],
+      "typicalRegion": "GM & Chrysler (North America), 1996-2008"
+    },
+    "iso15765-4-can-11-500": {
+      "name": "ISO 15765-4 CAN (11-bit, 500 kbps)",
+      "family": "CAN",
+      "busSpeedKbps": 500,
+      "addressing": "11-bit",
+      "functionalRequestId": "0x7DF",
+      "physicalRequestIdRange": "0x7E0-0x7E7",
+      "ecuResponseIdRange": "0x7E8-0x7EF",
+      "obdPins": [6, 14],
+      "typicalRegion": "Most vehicles 2008+ (mandatory in North America from 2008)"
+    },
+    "iso15765-4-can-29-500": {
+      "name": "ISO 15765-4 CAN (29-bit, 500 kbps)",
+      "family": "CAN",
+      "busSpeedKbps": 500,
+      "addressing": "29-bit",
+      "functionalRequestId": "0x18DB33F1",
+      "ecuResponseIdRange": "0x18DAF1xx",
+      "obdPins": [6, 14],
+      "typicalRegion": "Some 2008+ vehicles (notably GM/Chrysler)"
+    },
+    "iso15765-4-can-11-250": {
+      "name": "ISO 15765-4 CAN (11-bit, 250 kbps)",
+      "family": "CAN",
+      "busSpeedKbps": 250,
+      "addressing": "11-bit",
+      "functionalRequestId": "0x7DF",
+      "ecuResponseIdRange": "0x7E8-0x7EF",
+      "obdPins": [6, 14],
+      "typicalRegion": "Some medium-duty / early CAN vehicles"
+    }
+  },
+
+  "signalCatalog": {
+    "description": "Canonical occupant-classification signals this project cares about, independent of vehicle. Per-vehicle entries reference these by key and supply the actual IDs/encodings where known.",
+    "seatbelt_status": {
+      "meaning": "Front passenger seat belt buckle state",
+      "states": { "unbuckled": 0, "buckled": 1 }
+    },
+    "passenger_classification": {
+      "meaning": "Occupant weight category used to gate the passenger airbag and seatbelt chime",
+      "states": { "empty": 0, "child": 1, "adult": 2 },
+      "behavior": {
+        "empty": "Passenger airbag OFF, no chime",
+        "child": "Passenger airbag OFF/suppressed, chime suppressed (occupant under ~30 kg)",
+        "adult": "Passenger airbag ON, chime active (occupant over ~30 kg threshold)"
+      }
+    },
+    "airbag_indicator": {
+      "meaning": "PASSENGER AIRBAG ON/OFF indicator lamp request",
+      "states": { "off": 0, "on": 1 }
+    }
+  },
+
+  "vehicles": [
+    {
+      "make": "Toyota",
+      "model": "FJ Cruiser",
+      "yearStart": 2007,
+      "yearEnd": 2014,
+      "region": ["North America", "Global"],
+      "diagnosticProtocol": "iso15765-4-can-11-500",
+      "diagnosticProtocolConfidence": "documented",
+      "diagnosticNote": "OBD-II port is CAN (ISO 15765-4) for 5-digit DTC reading via DLC3. The Occupant Classification ECU itself is reached over a legacy K-line / serial diagnostic (DIA line) - this is the bus this project taps.",
+      "occupantClassification": {
+        "present": true,
+        "ecu": "Occupant Classification ECU (OCS)",
+        "method": "4 weight sensors at the seat corners + seat-belt buckle switch",
+        "moduleBus": "iso9141-2",
+        "moduleBusConfidence": "project",
+        "moduleBusNote": "Single-line 'DIA' communication between the OCS ECU and airbag sensor assembly, aligned with ISO 9141-2. Interfaced via MC33290 + OBD9141 library in this project.",
+        "signals": [
+          {
+            "key": "seatbelt_status",
+            "transport": "k-line-pid",
+            "mode": "0x01",
+            "id": "0x60",
+            "idMeaning": "PID_SEATBELT_STATUS",
+            "values": { "unbuckled": 0, "buckled": 1 },
+            "source": "project",
+            "ref": "src/k_line.h"
+          },
+          {
+            "key": "passenger_classification",
+            "transport": "k-line-pid",
+            "mode": "0x01",
+            "id": "0x61",
+            "idMeaning": "PID_PASSENGER_TYPE",
+            "values": { "none": 0, "child": 1, "adult": 2 },
+            "source": "project",
+            "ref": "src/k_line.h"
+          },
+          {
+            "key": "ocs_broadcast_frame_1",
+            "transport": "can",
+            "id": "0x265",
+            "idMeaning": "OCS_CAN_ID_1 - occupant classification broadcast frame",
+            "byteEncoding": null,
+            "values": null,
+            "source": "project",
+            "note": "ID defined in src/config.h. Payload byte layout not yet decoded in this repo.",
+            "ref": "src/config.h"
+          },
+          {
+            "key": "ocs_broadcast_frame_2",
+            "transport": "can",
+            "id": "0x453",
+            "idMeaning": "OCS_CAN_ID_2 - occupant classification broadcast frame",
+            "byteEncoding": null,
+            "values": null,
+            "source": "project",
+            "note": "ID defined in src/config.h. Payload byte layout not yet decoded in this repo.",
+            "ref": "src/config.h"
+          }
+        ],
+        "dtcs": [
+          { "code": "B1650/32", "meaning": "Occupant Classification System Malfunction", "source": "documented" },
+          { "code": "B0105", "meaning": "Front passenger occupant sensor / wiring fault", "source": "documented" },
+          { "code": "B0130", "meaning": "Front passenger occupant sensor / wiring fault", "source": "documented" },
+          { "code": "B1145", "meaning": "Front passenger occupant sensor / wiring fault", "source": "documented" }
+        ],
+        "calibration": "Zero-point calibration required whenever the passenger seat is removed/installed or items are added to it (hand-held tester via DLC3)."
+      }
+    },
+
+    {
+      "make": "Ford",
+      "model": "Mustang (S197)",
+      "yearStart": 2005,
+      "yearEnd": 2014,
+      "region": ["North America"],
+      "diagnosticProtocol": "iso15765-4-can-11-500",
+      "diagnosticProtocolConfidence": "inferred",
+      "diagnosticNote": "Donor seats for this project. Pre-2008 S197s used Ford's J1850 PWM at the OBD-II port for powertrain; body/restraint modules communicate over the internal MS-CAN/HS-CAN network.",
+      "occupantClassification": {
+        "present": true,
+        "ecu": "Restraint Control Module (RCM) + passenger occupant classification sensor",
+        "method": "Seat weight / occupant sensor with CAN-reported buckle and occupant status",
+        "moduleBus": "iso15765-4-can-11-500",
+        "moduleBusConfidence": "inferred",
+        "moduleBusNote": "This project reads the seat's CAN output to derive buckled / child / adult state. Use CanHandler::process or a Canable+CANgaroo capture to discover the actual frame IDs on a given seat harness.",
+        "signals": [
+          {
+            "key": "passenger_classification",
+            "transport": "can",
+            "id": null,
+            "idMeaning": "Seat occupant/buckle CAN frame",
+            "values": null,
+            "source": "unknown",
+            "note": "Frame ID and byte layout must be captured per seat harness; not publicly documented. This project maps the captured states onto empty/child/adult."
+          }
+        ],
+        "dtcs": []
+      }
+    },
+
+    {
+      "make": "Toyota",
+      "model": "Tacoma",
+      "yearStart": 2005,
+      "yearEnd": 2015,
+      "region": ["North America"],
+      "diagnosticProtocol": "iso15765-4-can-11-500",
+      "diagnosticProtocolConfidence": "documented",
+      "diagnosticNote": "Pre-2008 examples may report ISO 9141-2 / ISO 14230 at the OBD-II port; 2008+ are CAN. OCS module mirrors the FJ Cruiser architecture.",
+      "occupantClassification": {
+        "present": true,
+        "ecu": "Occupant Classification ECU (OCS)",
+        "method": "Seat weight sensors + buckle switch",
+        "moduleBus": "iso9141-2",
+        "moduleBusConfidence": "inferred",
+        "signals": [],
+        "dtcs": [
+          { "code": "B1650", "meaning": "Occupant Classification System Malfunction", "source": "documented" }
+        ]
+      }
+    },
+
+    {
+      "make": "Toyota",
+      "model": "4Runner",
+      "yearStart": 2003,
+      "yearEnd": 2009,
+      "region": ["North America", "Global"],
+      "diagnosticProtocol": "iso9141-2",
+      "diagnosticProtocolConfidence": "inferred",
+      "diagnosticNote": "2003-2007 typically ISO 9141-2 at OBD-II port; 2008+ migrate to CAN.",
+      "occupantClassification": {
+        "present": true,
+        "ecu": "Occupant Classification ECU (OCS)",
+        "method": "Seat weight sensors + buckle switch",
+        "moduleBus": "iso9141-2",
+        "moduleBusConfidence": "inferred",
+        "signals": [],
+        "dtcs": []
+      }
+    },
+
+    {
+      "make": "Toyota",
+      "model": "Camry",
+      "yearStart": 2002,
+      "yearEnd": 2006,
+      "region": ["North America", "Global"],
+      "diagnosticProtocol": "iso9141-2",
+      "diagnosticProtocolConfidence": "documented",
+      "diagnosticNote": "2007+ Camry transitions to CAN.",
+      "occupantClassification": {
+        "present": true,
+        "ecu": "Occupant Classification ECU (OCS)",
+        "method": "Seat weight sensors + buckle switch",
+        "moduleBus": "iso9141-2",
+        "moduleBusConfidence": "inferred",
+        "signals": [],
+        "dtcs": []
+      }
+    },
+
+    {
+      "make": "Toyota",
+      "model": "Corolla",
+      "yearStart": 2003,
+      "yearEnd": 2008,
+      "region": ["North America", "Global"],
+      "diagnosticProtocol": "iso9141-2",
+      "diagnosticProtocolConfidence": "documented",
+      "diagnosticNote": "2009+ transitions to CAN.",
+      "occupantClassification": { "present": true, "method": "Seat weight sensor / OCS", "moduleBus": "iso9141-2", "moduleBusConfidence": "inferred", "signals": [], "dtcs": [] }
+    },
+
+    {
+      "make": "Toyota",
+      "model": "Land Cruiser",
+      "yearStart": 2003,
+      "yearEnd": 2007,
+      "region": ["North America", "Global"],
+      "diagnosticProtocol": "iso9141-2",
+      "diagnosticProtocolConfidence": "inferred",
+      "diagnosticNote": "2008+ (200 series facelift) CAN.",
+      "occupantClassification": { "present": true, "ecu": "Occupant Classification ECU (OCS)", "method": "Seat weight sensors + buckle switch", "moduleBus": "iso9141-2", "moduleBusConfidence": "inferred", "signals": [], "dtcs": [] }
+    },
+
+    {
+      "make": "Lexus",
+      "model": "GX470",
+      "yearStart": 2003,
+      "yearEnd": 2009,
+      "region": ["North America"],
+      "diagnosticProtocol": "iso9141-2",
+      "diagnosticProtocolConfidence": "inferred",
+      "diagnosticNote": "Shares OCS architecture with Toyota body-on-frame platforms.",
+      "occupantClassification": { "present": true, "ecu": "Occupant Classification ECU (OCS)", "method": "Seat weight sensors + buckle switch", "moduleBus": "iso9141-2", "moduleBusConfidence": "inferred", "signals": [], "dtcs": [] }
+    },
+
+    {
+      "make": "Ford",
+      "model": "F-150",
+      "yearStart": 2004,
+      "yearEnd": 2008,
+      "region": ["North America"],
+      "diagnosticProtocol": "j1850-pwm",
+      "diagnosticProtocolConfidence": "documented",
+      "diagnosticNote": "Ford North America used J1850 PWM at the OBD-II port through ~2008, then CAN.",
+      "occupantClassification": { "present": true, "ecu": "Restraint Control Module (RCM) + occupant classification sensor", "method": "Seat weight sensor", "moduleBus": "iso15765-4-can-11-500", "moduleBusConfidence": "inferred", "signals": [], "dtcs": [] }
+    },
+
+    {
+      "make": "Ford",
+      "model": "F-150",
+      "yearStart": 2009,
+      "yearEnd": 2014,
+      "region": ["North America"],
+      "diagnosticProtocol": "iso15765-4-can-11-500",
+      "diagnosticProtocolConfidence": "standard",
+      "occupantClassification": { "present": true, "ecu": "Restraint Control Module (RCM)", "method": "Seat weight sensor", "moduleBus": "iso15765-4-can-11-500", "moduleBusConfidence": "inferred", "signals": [], "dtcs": [] }
+    },
+
+    {
+      "make": "Chevrolet",
+      "model": "Silverado 1500",
+      "yearStart": 2003,
+      "yearEnd": 2007,
+      "region": ["North America"],
+      "diagnosticProtocol": "j1850-vpw",
+      "diagnosticProtocolConfidence": "documented",
+      "diagnosticNote": "GM North America used J1850 VPW (Class 2) at the OBD-II port until the 2008 CAN mandate.",
+      "occupantClassification": { "present": true, "ecu": "Sensing & Diagnostic Module (SDM) + passenger presence/weight sensor", "method": "Passenger Presence System (PPS) / seat weight sensor", "moduleBus": "j1850-vpw", "moduleBusConfidence": "inferred", "signals": [], "dtcs": [] }
+    },
+
+    {
+      "make": "Chevrolet",
+      "model": "Silverado 1500",
+      "yearStart": 2008,
+      "yearEnd": 2013,
+      "region": ["North America"],
+      "diagnosticProtocol": "iso15765-4-can-11-500",
+      "diagnosticProtocolConfidence": "standard",
+      "occupantClassification": { "present": true, "ecu": "Sensing & Diagnostic Module (SDM)", "method": "Passenger Presence System (PPS)", "moduleBus": "iso15765-4-can-11-500", "moduleBusConfidence": "inferred", "signals": [], "dtcs": [] }
+    },
+
+    {
+      "make": "Honda",
+      "model": "Accord",
+      "yearStart": 2003,
+      "yearEnd": 2007,
+      "region": ["North America", "Global"],
+      "diagnosticProtocol": "iso9141-2",
+      "diagnosticProtocolConfidence": "documented",
+      "diagnosticNote": "2008+ CAN.",
+      "occupantClassification": { "present": true, "ecu": "SRS unit + Occupant Position Detection System (OPDS)", "method": "OPDS capacitive seat-back sensor (Honda uses a different occupant-detection approach than weight-sensor OCS)", "moduleBus": "iso9141-2", "moduleBusConfidence": "inferred", "signals": [], "dtcs": [] }
+    },
+
+    {
+      "make": "Honda",
+      "model": "Civic",
+      "yearStart": 2006,
+      "yearEnd": 2011,
+      "region": ["North America", "Global"],
+      "diagnosticProtocol": "iso15765-4-can-11-500",
+      "diagnosticProtocolConfidence": "inferred",
+      "occupantClassification": { "present": true, "ecu": "SRS unit + OPDS", "method": "OPDS capacitive sensor", "moduleBus": "iso15765-4-can-11-500", "moduleBusConfidence": "inferred", "signals": [], "dtcs": [] }
+    },
+
+    {
+      "make": "Nissan",
+      "model": "Altima",
+      "yearStart": 2002,
+      "yearEnd": 2006,
+      "region": ["North America"],
+      "diagnosticProtocol": "iso9141-2",
+      "diagnosticProtocolConfidence": "documented",
+      "diagnosticNote": "2007+ CAN.",
+      "occupantClassification": { "present": true, "ecu": "Occupant Classification System unit", "method": "Seat weight sensor", "moduleBus": "iso9141-2", "moduleBusConfidence": "inferred", "signals": [], "dtcs": [] }
+    },
+
+    {
+      "make": "Subaru",
+      "model": "Outback / Legacy",
+      "yearStart": 2005,
+      "yearEnd": 2009,
+      "region": ["North America", "Global"],
+      "diagnosticProtocol": "iso9141-2",
+      "diagnosticProtocolConfidence": "inferred",
+      "diagnosticNote": "Mid-2000s Subaru used ISO 9141-2 / KWP; later move to CAN.",
+      "occupantClassification": { "present": true, "ecu": "Occupant Detection System", "method": "Seat weight sensor", "moduleBus": "iso9141-2", "moduleBusConfidence": "inferred", "signals": [], "dtcs": [] }
+    },
+
+    {
+      "make": "Volkswagen",
+      "model": "Golf / Jetta (Mk5)",
+      "yearStart": 2005,
+      "yearEnd": 2009,
+      "region": ["Europe", "North America"],
+      "diagnosticProtocol": "iso14230-4-kwp-fast",
+      "diagnosticProtocolConfidence": "documented",
+      "diagnosticNote": "VAG used KWP2000 (K-line) widely; many 2008+ models moved to CAN (UDS).",
+      "occupantClassification": { "present": true, "ecu": "Airbag control unit + seat occupancy mat", "method": "Capacitive/weight seat-occupancy mat", "moduleBus": "iso14230-4-kwp-fast", "moduleBusConfidence": "inferred", "signals": [], "dtcs": [] }
+    },
+
+    {
+      "make": "BMW",
+      "model": "3 Series (E46)",
+      "yearStart": 1998,
+      "yearEnd": 2006,
+      "region": ["Europe", "North America", "Global"],
+      "diagnosticProtocol": "iso9141-2",
+      "diagnosticProtocolConfidence": "documented",
+      "diagnosticNote": "BMW used ISO 9141-2 K-line before transitioning to CAN (ISO 15765-4) starting ~2001-2004 on newer platforms (E60/E65).",
+      "occupantClassification": { "present": true, "ecu": "MRS (Multiple Restraint System) + seat occupancy detection (BST/SBE mat)", "method": "Seat occupancy/weight mat", "moduleBus": "iso9141-2", "moduleBusConfidence": "inferred", "signals": [], "dtcs": [] }
+    },
+
+    {
+      "make": "BMW",
+      "model": "5 Series (E60)",
+      "yearStart": 2004,
+      "yearEnd": 2010,
+      "region": ["Europe", "North America", "Global"],
+      "diagnosticProtocol": "iso15765-4-can-11-500",
+      "diagnosticProtocolConfidence": "documented",
+      "diagnosticNote": "Early CAN adopter; full CAN diagnostics.",
+      "occupantClassification": { "present": true, "ecu": "MRS + seat occupancy detection", "method": "Seat occupancy mat", "moduleBus": "iso15765-4-can-11-500", "moduleBusConfidence": "inferred", "signals": [], "dtcs": [] }
+    },
+
+    {
+      "make": "Mercedes-Benz",
+      "model": "C-Class (W203)",
+      "yearStart": 2001,
+      "yearEnd": 2007,
+      "region": ["Europe", "North America", "Global"],
+      "diagnosticProtocol": "iso9141-2",
+      "diagnosticProtocolConfidence": "inferred",
+      "diagnosticNote": "Early W203 K-line; later facelift moves toward CAN.",
+      "occupantClassification": { "present": true, "ecu": "Airbag control module + occupant classification (AOS - Automatic Occupant Sensing)", "method": "Seat weight sensor mat", "moduleBus": "iso9141-2", "moduleBusConfidence": "inferred", "signals": [], "dtcs": [] }
+    },
+
+    {
+      "make": "Chrysler",
+      "model": "300",
+      "yearStart": 2005,
+      "yearEnd": 2007,
+      "region": ["North America"],
+      "diagnosticProtocol": "j1850-vpw",
+      "diagnosticProtocolConfidence": "inferred",
+      "diagnosticNote": "Chrysler used J1850 VPW pre-2008, then CAN.",
+      "occupantClassification": { "present": true, "ecu": "Occupant Restraint Controller (ORC) + occupant classification module", "method": "Seat weight sensor", "moduleBus": "j1850-vpw", "moduleBusConfidence": "inferred", "signals": [], "dtcs": [] }
+    },
+
+    {
+      "make": "Hyundai",
+      "model": "Sonata",
+      "yearStart": 2006,
+      "yearEnd": 2010,
+      "region": ["North America", "Global"],
+      "diagnosticProtocol": "iso15765-4-can-11-500",
+      "diagnosticProtocolConfidence": "inferred",
+      "diagnosticNote": "Earliest 2006 examples may be KWP/K-line; majority CAN.",
+      "occupantClassification": { "present": true, "ecu": "SRSCM + Passenger Occupant Detection System (PODS)", "method": "Seat weight sensor (bladder/strain gauge)", "moduleBus": "iso15765-4-can-11-500", "moduleBusConfidence": "inferred", "signals": [], "dtcs": [] }
+    }
+  ]
+}
