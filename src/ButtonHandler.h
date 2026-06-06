@@ -21,6 +21,7 @@ public:
     // Handler interface
     void setup() override;
     void process() override;
+    bool isActive() override;
 
     // PassengerStateInput interface
     void processInput(PassengerState& state) override;

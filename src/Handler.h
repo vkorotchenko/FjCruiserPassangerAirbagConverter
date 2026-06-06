@@ -20,6 +20,14 @@ public:
      * Called once during system startup
      */
     virtual void setup() = 0;
+
+    /**
+     * Whether this handler is currently enabled at runtime.
+     * Gates process() in the main loop so a disabled handler does no work and
+     * never touches its (possibly uninitialised) bus. Defaults to always-on;
+     * handlers backed by a RuntimeConfig flag override this.
+     */
+    virtual bool isActive() { return true; }
 };
 
 #endif /* HANDLER_H_ */

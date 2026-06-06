@@ -85,6 +85,8 @@ public:
 
     CanHandler( );
     void setup() override;
+    bool isActive() override;
+    bool isInitialized() { return initialized; }
     uint32_t getBusSpeed();
     void process() override;
     void prepareOutputFrame(CAN_FRAME *frame, uint32_t id);

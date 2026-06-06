@@ -1,7 +1,13 @@
 #include "ButtonHandler.h"
+#include "RuntimeConfig.h"
 
 // Global singleton instance
 ButtonHandler buttonHandler;
+
+// Active only when button input is enabled at runtime.
+bool ButtonHandler::isActive() {
+    return g_config.useButtonInput;
+}
 
 ButtonHandler::ButtonHandler()
     : buttonPin(BUTTON_PIN)

@@ -21,6 +21,7 @@ public:
 
     // Initialization methods
     void setup() override;
+    bool isActive() override;
 
     // Main processing loop (called from main loop)
     void process() override;

@@ -3,3 +3,6 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# Generated gzipped web assets (rebuild with scripts/build_web.sh)
+data_esp/*.gz

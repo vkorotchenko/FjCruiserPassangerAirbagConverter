@@ -1,7 +1,14 @@
 #include "KLineInput.h"
+#include "RuntimeConfig.h"
+#include "EspLink.h"
 
 // Global singleton instance
 KLineInput kLineInput = KLineInput();
+
+// Active only when K-line input is enabled at runtime.
+bool KLineInput::isActive() {
+    return g_config.useKlineInput;
+}
 
 // Constructor
 KLineInput::KLineInput()
@@ -121,6 +128,11 @@ bool KLineInput::readPID(uint8_t pid, uint8_t mode, uint8_t expectedLength) {
     if (success) {
         lastResponseLength = expectedLength;
         lastCommunicationTime = millis();
+
+        // Forward the response to the web UI when K-line capture is on.
+        if (espLink.capturingKline()) {
+            espLink.captureKlineFrame(mode, pid, getResponseBuffer(), expectedLength);
+        }
     } else {
         Logger::debug("K-line Input: PID read failed");
         lastResponseLength = 0;

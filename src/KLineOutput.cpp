@@ -1,7 +1,13 @@
 #include "KLineOutput.h"
+#include "RuntimeConfig.h"
 
 // Global singleton instance
 KLineOutput kLineOutput = KLineOutput();
+
+// Active only when K-line output is enabled at runtime.
+bool KLineOutput::isActive() {
+    return g_config.useKlineOutput;
+}
 
 // Constructor
 KLineOutput::KLineOutput()

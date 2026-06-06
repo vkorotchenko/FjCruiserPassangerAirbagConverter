@@ -7,29 +7,14 @@
 #include "PassengerStateInput.h"
 #include "PassengerStateOutput.h"
 
-#if USE_KLINE_INPUT
+// All handlers are compiled in unconditionally; activation is decided at
+// runtime from RuntimeConfig (g_config) rather than compile-time #if.
 #include "KLineInput.h"
-#endif
-
-#if USE_KLINE_OUTPUT
 #include "KLineOutput.h"
-#endif
-
-#if USE_CAN_INPUT || USE_CAN_OUTPUT
 #include "CanHandler.h"
-#endif
-
-#if USE_BUTTON_INPUT
 #include "ButtonHandler.h"
-#endif
-
-#if USE_DPOT_OUTPUT
 #include "digital_pot.h"
-#endif
-
-#if USE_RELAY_OUTPUT
 #include "SeatbeltRelay.h"
-#endif
 
 /**
  * Manages passenger state inputs and outputs based on configuration
@@ -64,9 +49,13 @@ public:
     bool hasReadyOutput();
 
 private:
-    // Arrays to store active inputs and outputs
-    PassengerStateInput* inputs[3];    // Max 3 inputs (K-line, CAN, Button)
-    PassengerStateOutput* outputs[4];  // Max 4 outputs (K-line, CAN, DigitalPot, Relay)
+    // Arrays to store registered inputs and outputs. Every input/output is
+    // registered once; the parallel *Enabled arrays point at the RuntimeConfig
+    // flag that gates each one at runtime.
+    PassengerStateInput* inputs[3];        // K-line, CAN, Button
+    const bool* inputEnabled[3];
+    PassengerStateOutput* outputs[4];      // K-line, CAN, DigitalPot, Relay
+    const bool* outputEnabled[4];
 
     uint8_t inputCount;
     uint8_t outputCount;

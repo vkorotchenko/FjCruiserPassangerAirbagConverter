@@ -1,0 +1,16 @@
+# Partition table for the Adafruit Feather ESP32-S2 (4 MB flash).
+#
+# Mirrors the board's TinyUF2 layout (keeps the `uf2` factory partition at
+# 0x2d0000 so the UF2 bootloader still works) but exposes the filesystem
+# partition as subtype `spiffs` so the firmware's LittleFS mount and
+# `pio run -t uploadfs` find it by default. The board's own
+# partitions-4MB-tinyuf2.csv uses a `ffat` (FAT) partition instead, which
+# LittleFS would not mount.
+#
+# Name,    Type, SubType,  Offset,   Size,    Flags
+nvs,       data, nvs,      0x9000,   0x5000,
+otadata,   data, ota,      0xe000,   0x2000,
+ota_0,     app,  ota_0,    0x10000,  0x160000,
+ota_1,     app,  ota_1,    0x170000, 0x160000,
+uf2,       app,  factory,  0x2d0000, 0x40000,
+spiffs,    data, spiffs,   0x310000, 0xF0000,

@@ -1,4 +1,5 @@
 #include "InputOutputManager.h"
+#include "RuntimeConfig.h"
 #include "Logger.h"
 
 // Global singleton instance
@@ -11,9 +12,11 @@ InputOutputManager::InputOutputManager()
     // Initialize arrays to null
     for (uint8_t i = 0; i < 3; i++) {
         inputs[i] = nullptr;
+        inputEnabled[i] = nullptr;
     }
     for (uint8_t i = 0; i < 4; i++) {
         outputs[i] = nullptr;
+        outputEnabled[i] = nullptr;
     }
 }
 
@@ -23,55 +26,49 @@ void InputOutputManager::begin() {
 }
 
 void InputOutputManager::initializeInputs() {
-    Logger::info("IO Manager: Initializing inputs...");
+    Logger::info("IO Manager: Registering inputs...");
 
-#if USE_KLINE_INPUT
-    inputs[inputCount++] = &kLineInput;
-    Logger::info("IO Manager: K-line input enabled");
-#endif
+    // Register every input once; runtime gating is via the enable pointer.
+    inputs[inputCount] = &kLineInput;
+    inputEnabled[inputCount] = &g_config.useKlineInput;
+    inputCount++;
 
-#if USE_CAN_INPUT
-    inputs[inputCount++] = &canHandler;
-    Logger::info("IO Manager: CAN input enabled");
-#endif
+    inputs[inputCount] = &canHandler;
+    inputEnabled[inputCount] = &g_config.useCanInput;
+    inputCount++;
 
-#if USE_BUTTON_INPUT
-    inputs[inputCount++] = &buttonHandler;
-    Logger::info("IO Manager: Button input enabled");
-#endif
+    inputs[inputCount] = &buttonHandler;
+    inputEnabled[inputCount] = &g_config.useButtonInput;
+    inputCount++;
 
-    Logger::info("IO Manager: %d input source(s) configured", inputCount);
+    Logger::info("IO Manager: %d input source(s) registered", inputCount);
 }
 
 void InputOutputManager::initializeOutputs() {
-    Logger::info("IO Manager: Initializing outputs...");
+    Logger::info("IO Manager: Registering outputs...");
 
-#if USE_KLINE_OUTPUT
-    outputs[outputCount++] = &kLineOutput;
-    Logger::info("IO Manager: K-line output enabled");
-#endif
+    outputs[outputCount] = &kLineOutput;
+    outputEnabled[outputCount] = &g_config.useKlineOutput;
+    outputCount++;
 
-#if USE_CAN_OUTPUT
-    outputs[outputCount++] = &canHandler;
-    Logger::info("IO Manager: CAN output enabled");
-#endif
+    outputs[outputCount] = &canHandler;
+    outputEnabled[outputCount] = &g_config.useCanOutput;
+    outputCount++;
 
-#if USE_DPOT_OUTPUT
-    outputs[outputCount++] = &digitalPotHandler;
-    Logger::info("IO Manager: Digital Pot output enabled");
-#endif
+    outputs[outputCount] = &digitalPotHandler;
+    outputEnabled[outputCount] = &g_config.useDpotOutput;
+    outputCount++;
 
-#if USE_RELAY_OUTPUT
-    outputs[outputCount++] = &seatbeltRelay;
-    Logger::info("IO Manager: Relay output enabled");
-#endif
+    outputs[outputCount] = &seatbeltRelay;
+    outputEnabled[outputCount] = &g_config.useRelayOutput;
+    outputCount++;
 
-    Logger::info("IO Manager: %d output target(s) configured", outputCount);
+    Logger::info("IO Manager: %d output target(s) registered", outputCount);
 }
 
 void InputOutputManager::processInputs(PassengerState& state) {
     for (uint8_t i = 0; i < inputCount; i++) {
-        if (inputs[i] != nullptr && inputs[i]->isInputReady()) {
+        if (inputs[i] != nullptr && *inputEnabled[i] && inputs[i]->isInputReady()) {
             inputs[i]->processInput(state);
         }
     }
@@ -79,7 +76,7 @@ void InputOutputManager::processInputs(PassengerState& state) {
 
 void InputOutputManager::applyOutputs(const PassengerState& state) {
     for (uint8_t i = 0; i < outputCount; i++) {
-        if (outputs[i] != nullptr && outputs[i]->isOutputReady()) {
+        if (outputs[i] != nullptr && *outputEnabled[i] && outputs[i]->isOutputReady()) {
             outputs[i]->applyState(state);
         }
     }
@@ -87,7 +84,7 @@ void InputOutputManager::applyOutputs(const PassengerState& state) {
 
 bool InputOutputManager::hasReadyInput() {
     for (uint8_t i = 0; i < inputCount; i++) {
-        if (inputs[i] != nullptr && inputs[i]->isInputReady()) {
+        if (inputs[i] != nullptr && *inputEnabled[i] && inputs[i]->isInputReady()) {
             return true;
         }
     }
@@ -96,7 +93,7 @@ bool InputOutputManager::hasReadyInput() {
 
 bool InputOutputManager::hasReadyOutput() {
     for (uint8_t i = 0; i < outputCount; i++) {
-        if (outputs[i] != nullptr && outputs[i]->isOutputReady()) {
+        if (outputs[i] != nullptr && *outputEnabled[i] && outputs[i]->isOutputReady()) {
             return true;
         }
     }

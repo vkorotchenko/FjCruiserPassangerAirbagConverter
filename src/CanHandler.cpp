@@ -28,9 +28,16 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #include "CanHandler.h"
+#include "RuntimeConfig.h"
+#include "EspLink.h"
 
 mcp2515_can CAN(SPI_CS_PIN); // Set CS pin
 CanHandler canHandler = CanHandler();
+
+// Active when either CAN input or CAN output is enabled at runtime.
+bool CanHandler::isActive() {
+    return g_config.useCanInput || g_config.useCanOutput;
+}
 
 /*
  * Constructor of the can handler
@@ -48,14 +55,23 @@ CanHandler::CanHandler()
  */
 void CanHandler::setup()
 {
-    while (CAN_OK != CAN.begin(CAN_SPEED))
+    // Bounded retry: never block boot forever if the CAN FeatherWing is absent
+    // (this setup() is only called when CAN is enabled in RuntimeConfig).
+    const uint8_t maxAttempts = 20;
+    for (uint8_t attempt = 1; attempt <= maxAttempts; attempt++)
     {
-        SERIAL_PORT_MONITOR.println("CAN init fail, retry...");
+        if (CAN_OK == CAN.begin(CAN_SPEED))
+        {
+            initialized = true;
+            Logger::info("CAN init ok. Speed = %i", CAN_500KBPS);
+            return;
+        }
+        Logger::info("CAN init fail, retry %d/%d...", attempt, maxAttempts);
         delay(200);
     }
 
-    initialized = true;
-    Logger::info("CAN init ok. Speed = %i", CAN_500KBPS);
+    initialized = false;
+    Logger::info("CAN init failed after %d attempts - CAN disabled until reboot", maxAttempts);
 }
 
 uint32_t CanHandler::getBusSpeed()
@@ -103,6 +119,12 @@ void CanHandler::process()
         frame.id = CAN.getCanId();
         frame.extended = (bool)CAN.isExtendedFrame();
         frame.rtr = CAN.isRemoteRequest();
+
+        // When capturing, forward EVERY frame (bypassing the OCS id filter) so
+        // unknown OCS ids can be discovered from the web UI.
+        if (espLink.capturingCan()) {
+            espLink.captureCanFrame(frame.id, frame.extended, frame.data.bytes, frame.length);
+        }
 
         if(frame.id == 0) {
             return;

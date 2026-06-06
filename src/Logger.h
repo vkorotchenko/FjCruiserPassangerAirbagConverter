@@ -30,6 +30,17 @@
 #include <Arduino.h>
 #include "config.h"
 
+/**
+ * Optional second destination for fully-formatted log lines (no trailing
+ * newline). Implemented by EspLink so log output can also be streamed to the
+ * web UI alongside the USB serial console. Implementations must be non-blocking.
+ */
+class LogSink {
+public:
+    virtual ~LogSink() {}
+    virtual void writeLine(int level, const char *line) = 0;
+};
+
 class Logger {
 public:
     enum LogLevel {
@@ -43,12 +54,18 @@ public:
     static LogLevel getLogLevel();
     static uint32_t getLastLogTime();
     static boolean isDebug();
+
+    // Register (or clear, with nullptr) an additional log destination.
+    static void setSink(LogSink *s);
 private:
     static LogLevel logLevel;
     static uint32_t lastLogTime;
+    static LogSink *sink;
 
     static void log(LogLevel, const char *format, va_list);
-    static void logMessage(const char *format, va_list args);
+    // Renders the printf-style message into `out` (a Print sink) without a
+    // trailing newline, so callers can fan it out to multiple destinations.
+    static void logMessage(Print &out, const char *format, va_list args);
 
 };
 

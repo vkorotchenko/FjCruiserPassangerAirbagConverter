@@ -25,9 +25,39 @@
  */
 
 #include "Logger.h"
+#include "control_protocol.h"   // CONTROL_LINE_MAX
 
 Logger::LogLevel Logger::logLevel = Logger::Debug;
 uint32_t Logger::lastLogTime = 0;
+LogSink *Logger::sink = nullptr;
+
+/*
+ * A fixed-size Print target that accumulates characters into a buffer so a log
+ * line can be rendered once and then fanned out to several destinations (USB
+ * serial console and the optional LogSink) without re-running the formatter.
+ */
+class LineBuffer : public Print {
+public:
+    LineBuffer() : len(0) {}
+    size_t write(uint8_t c) override {
+        if (len < CONTROL_LINE_MAX - 1) {
+            buf[len++] = (char) c;
+        }
+        return 1;
+    }
+    size_t write(const uint8_t *b, size_t n) override {
+        for (size_t i = 0; i < n; i++) write(b[i]);
+        return n;
+    }
+    const char *c_str() { buf[len] = '\0'; return buf; }
+private:
+    char buf[CONTROL_LINE_MAX];
+    size_t len;
+};
+
+void Logger::setSink(LogSink *s) {
+    sink = s;
+}
 
 /*
  * Output a debug message with a variable amount of parameters.
@@ -59,10 +89,14 @@ void Logger::info(const char *message, ...) {
  * printf() style, see Logger::logMessage()
  */
 void Logger::console(const char *message, ...) {
+    LineBuffer lb;
     va_list args;
     va_start(args, message);
-    Logger::logMessage(message, args);
+    Logger::logMessage(lb, message, args);
     va_end(args);
+
+    SERIAL_PORT_MONITOR.println(lb.c_str());
+    if (sink) sink->writeLine(Info, lb.c_str());
 }
 
 /*
@@ -113,19 +147,26 @@ boolean Logger::isDebug() {
  */
 void Logger::log(LogLevel level, const char *format, va_list args) {
     lastLogTime = millis();
-    SERIAL_PORT_MONITOR.print(lastLogTime);
-    SERIAL_PORT_MONITOR.print(" - ");
+
+    // Render the whole line once into a buffer, then fan out to the USB console
+    // and (if registered) the sink. Keeps formatting in one place.
+    LineBuffer lb;
+    lb.print(lastLogTime);
+    lb.print(" - ");
 
     switch (level) {
     case Debug:
-        SERIAL_PORT_MONITOR.print("DEBUG: ");
+        lb.print("DEBUG: ");
         break;
     case Info:
-        SERIAL_PORT_MONITOR.print("INFO: ");
+        lb.print("INFO: ");
         break;
     }
 
-    logMessage(format, args);
+    logMessage(lb, format, args);
+
+    SERIAL_PORT_MONITOR.println(lb.c_str());
+    if (sink) sink->writeLine(level, lb.c_str());
 }
 
 /*
@@ -146,77 +187,76 @@ void Logger::log(LogLevel level, const char *format, va_list args) {
  * %t - prints the next parameter as boolean ('T' or 'F')
  * %T - prints the next parameter as boolean ('true' or 'false')
  */
-void Logger::logMessage(const char *format, va_list args) {
+void Logger::logMessage(Print &out, const char *format, va_list args) {
     for (; *format != 0; ++format) {
         if (*format == '%') {
             ++format;
             if (*format == '\0')
                 break;
             if (*format == '%') {
-                SERIAL_PORT_MONITOR.print(*format);
+                out.print(*format);
                 continue;
             }
             if (*format == 's') {
                 register char *s = (char *) va_arg( args, int );
-                SERIAL_PORT_MONITOR.print(s);
+                out.print(s);
                 continue;
             }
             if (*format == 'd' || *format == 'i') {
-                SERIAL_PORT_MONITOR.print(va_arg( args, int ), DEC);
+                out.print(va_arg( args, int ), DEC);
                 continue;
             }
             if (*format == 'f') {
-                SERIAL_PORT_MONITOR.print(va_arg( args, double ), 2);
+                out.print(va_arg( args, double ), 2);
                 continue;
             }
             if (*format == 'x') {
-                SERIAL_PORT_MONITOR.print(va_arg( args, int ), HEX);
+                out.print(va_arg( args, int ), HEX);
                 continue;
             }
             if (*format == 'X') {
-                SERIAL_PORT_MONITOR.print("0x");
-                SERIAL_PORT_MONITOR.print(va_arg( args, int ), HEX);
+                out.print("0x");
+                out.print(va_arg( args, int ), HEX);
                 continue;
             }
             if (*format == 'b') {
-                SERIAL_PORT_MONITOR.print(va_arg( args, int ), BIN);
+                out.print(va_arg( args, int ), BIN);
                 continue;
             }
             if (*format == 'B') {
-                SERIAL_PORT_MONITOR.print("0b");
-                SERIAL_PORT_MONITOR.print(va_arg( args, int ), BIN);
+                out.print("0b");
+                out.print(va_arg( args, int ), BIN);
                 continue;
             }
             if (*format == 'l') {
-                SERIAL_PORT_MONITOR.print(va_arg( args, long ), DEC);
+                out.print(va_arg( args, long ), DEC);
                 continue;
             }
 
             if (*format == 'c') {
-                SERIAL_PORT_MONITOR.print(va_arg( args, int ));
+                out.print(va_arg( args, int ));
                 continue;
             }
             if (*format == 't') {
                 if (va_arg( args, int ) == 1) {
-                    SERIAL_PORT_MONITOR.print("T");
+                    out.print("T");
                 } else {
-                    SERIAL_PORT_MONITOR.print("F");
+                    out.print("F");
                 }
                 continue;
             }
             if (*format == 'T') {
                 if (va_arg( args, int ) == 1) {
-                    SERIAL_PORT_MONITOR.print("true");
+                    out.print("true");
                 } else {
-                    SERIAL_PORT_MONITOR.print("false");
+                    out.print("false");
                 }
                 continue;
             }
 
         }
-        SERIAL_PORT_MONITOR.print(*format);
+        out.print(*format);
     }
-    SERIAL_PORT_MONITOR.println();
 }
 
 

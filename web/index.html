@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>FJ OCS Converter</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <header>
+    <h1>FJ OCS Converter</h1>
+    <div class="pills">
+      <span id="pill-link" class="pill down">link</span>
+      <span id="pill-kline" class="pill down">K-line</span>
+      <span id="pill-can" class="pill down">CAN</span>
+    </div>
+  </header>
+
+  <nav id="tabs">
+    <button data-tab="monitor" class="active">Monitor</button>
+    <button data-tab="tuning">Tuning</button>
+    <button data-tab="config">Config</button>
+    <button data-tab="capture">Capture</button>
+  </nav>
+
+  <main>
+    <!-- ===== Monitor ===== -->
+    <section id="tab-monitor" class="tab active">
+      <div class="cards">
+        <div class="card">
+          <div class="label">Seatbelt</div>
+          <div id="m-buckled" class="value">—</div>
+        </div>
+        <div class="card">
+          <div class="label">Passenger</div>
+          <div id="m-passenger" class="value">—</div>
+        </div>
+        <div class="card">
+          <div class="label">Override</div>
+          <div id="m-override" class="value">—</div>
+        </div>
+      </div>
+      <div class="logbar">
+        <label><input type="checkbox" id="log-debug" /> show debug</label>
+        <button id="log-pause">Pause</button>
+        <button id="log-clear">Clear</button>
+      </div>
+      <pre id="log"></pre>
+    </section>
+
+    <!-- ===== Tuning ===== -->
+    <section id="tab-tuning" class="tab">
+      <h2>Inputs</h2>
+      <label class="row"><span>K-line input</span><input type="checkbox" data-cfg="useKlineInput" /></label>
+      <label class="row"><span>CAN input</span><input type="checkbox" data-cfg="useCanInput" /></label>
+      <label class="row"><span>Button input</span><input type="checkbox" data-cfg="useButtonInput" /></label>
+      <h2>Outputs</h2>
+      <label class="row"><span>K-line output</span><input type="checkbox" data-cfg="useKlineOutput" /></label>
+      <label class="row"><span>CAN output</span><input type="checkbox" data-cfg="useCanOutput" /></label>
+      <label class="row"><span>Digital-pot output</span><input type="checkbox" data-cfg="useDpotOutput" /></label>
+      <label class="row"><span>Relay output</span><input type="checkbox" data-cfg="useRelayOutput" /></label>
+
+      <h2>Digital-pot positions <small>(0–99 · R = 10kΩ × pos / 99)</small></h2>
+      <label class="row"><span>Off / empty</span>
+        <input type="range" min="0" max="99" data-cfg="dpotPositionOff" />
+        <output data-for="dpotPositionOff">0</output></label>
+      <label class="row"><span>Child</span>
+        <input type="range" min="0" max="99" data-cfg="dpotPositionChild" />
+        <output data-for="dpotPositionChild">0</output></label>
+      <label class="row"><span>Adult</span>
+        <input type="range" min="0" max="99" data-cfg="dpotPositionAdult" />
+        <output data-for="dpotPositionAdult">0</output></label>
+
+      <h2>Manual override <small>(bench testing)</small></h2>
+      <label class="row"><span>Enable override</span><input type="checkbox" id="ov-enabled" /></label>
+      <label class="row"><span>Buckled</span><input type="checkbox" id="ov-buckled" /></label>
+      <label class="row"><span>Passenger</span>
+        <select id="ov-passenger">
+          <option value="0">None</option>
+          <option value="1">Child</option>
+          <option value="2">Adult</option>
+        </select></label>
+      <button id="ov-apply" class="primary">Apply override</button>
+    </section>
+
+    <!-- ===== Config ===== -->
+    <section id="tab-config" class="tab">
+      <p class="note">Pin assignments are wired in firmware and need a reflash — they are not editable here.</p>
+      <label class="row"><span>Active protocol</span>
+        <select data-cfg="activeProtocol">
+          <option value="0">K-line (ISO 9141-2)</option>
+          <option value="1">CAN (ISO 15765-4)</option>
+        </select></label>
+      <label class="row"><span>OCS CAN ID 1</span><input type="text" data-cfg-hex="ocsCanId1" placeholder="0x265" /></label>
+      <label class="row"><span>OCS CAN ID 2</span><input type="text" data-cfg-hex="ocsCanId2" placeholder="0x453" /></label>
+      <label class="row"><span>PID seatbelt status</span><input type="text" data-cfg-hex="pidSeatbeltStatus" placeholder="0x60" /></label>
+      <label class="row"><span>PID passenger type</span><input type="text" data-cfg-hex="pidPassengerType" placeholder="0x61" /></label>
+      <div class="actions">
+        <button id="cfg-save" class="primary">Save to flash</button>
+        <button id="cfg-reset" class="danger">Reset to defaults</button>
+      </div>
+      <p class="note">Config version: <span id="cfg-version">—</span></p>
+    </section>
+
+    <!-- ===== Capture ===== -->
+    <section id="tab-capture" class="tab">
+      <div class="capbar">
+        <select id="cap-src">
+          <option value="all">All buses</option>
+          <option value="can">CAN only</option>
+          <option value="kline">K-line only</option>
+        </select>
+        <button id="cap-start" class="primary">Start</button>
+        <button id="cap-stop">Stop</button>
+        <button id="cap-clear">Clear</button>
+        <span id="cap-count" class="count">0 ids</span>
+      </div>
+      <table id="cap-table">
+        <thead><tr><th>Bus</th><th>ID / PID</th><th>Len</th><th>Data (changed bytes highlighted)</th><th>Count</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="actions">
+        <button id="cap-export-json">Export JSON snippet</button>
+        <button id="cap-export-mongo">Export Mongo line</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
