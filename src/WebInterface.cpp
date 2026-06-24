@@ -7,6 +7,8 @@
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 #include <Preferences.h>
+#include <Update.h>
+#include <ESPmDNS.h>
 
 #include "config.h"
 #include "control_protocol.h"
@@ -19,6 +21,10 @@ WebInterface webInterface;
 static AsyncWebServer server(80);
 static AsyncWebSocket ws("/ws");
 static Preferences wifiPrefs;
+
+// Set true when an OTA image has been written successfully; WebInterface::loop()
+// reboots into the new firmware shortly after the HTTP response is flushed.
+static volatile bool otaRebootPending = false;
 
 // EspLink sender: broadcast a rendered event line to all WebSocket clients.
 static void wsSend(const char *line) {
@@ -95,6 +101,43 @@ static void setupRoutes() {
         });
     server.addHandler(wifiHandler);
 
+    // Firmware OTA: receive a new application image and flash it to the inactive
+    // OTA partition. The image is validated by the Update library (magic byte +
+    // size) and the client verifies its SHA256 before upload, so a corrupt or
+    // interrupted transfer leaves the running firmware intact (rollback-safe).
+    server.on(
+        "/api/ota", HTTP_POST,
+        [](AsyncWebServerRequest *req) {
+            bool ok = !Update.hasError();
+            AsyncWebServerResponse *res = req->beginResponse(
+                ok ? 200 : 500, "application/json",
+                ok ? "{\"ok\":true}" : "{\"ok\":false,\"err\":\"flash failed\"}");
+            res->addHeader("Connection", "close");
+            req->send(res);
+            if (ok) {
+                otaRebootPending = true;  // loop() reboots after the response flushes
+            }
+        },
+        [](AsyncWebServerRequest *req, const String &filename, size_t index,
+           uint8_t *data, size_t len, bool final) {
+            if (index == 0) {
+                Logger::info("OTA: receiving '%s'", filename.c_str());
+                if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+                    Update.printError(Serial);
+                }
+            }
+            if (Update.size() && Update.write(data, len) != len) {
+                Update.printError(Serial);
+            }
+            if (final) {
+                if (Update.end(true)) {
+                    Logger::info("OTA: image written (%u bytes)", index + len);
+                } else {
+                    Update.printError(Serial);
+                }
+            }
+        });
+
     server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
     server.onNotFound([](AsyncWebServerRequest *req) {
         if (LittleFS.exists("/index.html")) {
@@ -118,9 +161,21 @@ void WebInterface::setup() {
     setupRoutes();
     server.begin();
 
+    // Advertise as "<hostname>.local" so the app can reach the converter on the
+    // home network by name (no need to know its DHCP IP).
+    if (MDNS.begin(WIFI_HOSTNAME)) {
+        MDNS.addService("http", "tcp", 80);
+        Logger::info("WebInterface: mDNS responder at %s.local", WIFI_HOSTNAME);
+    }
+
     Logger::info("WebInterface: AP '%s' at %s", WIFI_AP_SSID, WiFi.softAPIP().toString().c_str());
 }
 
 void WebInterface::loop() {
     ws.cleanupClients();
+    if (otaRebootPending) {
+        Logger::info("OTA: rebooting into new firmware");
+        delay(200);  // let the HTTP response and log flush
+        ESP.restart();
+    }
 }

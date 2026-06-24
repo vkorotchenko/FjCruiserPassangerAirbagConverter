@@ -7,8 +7,13 @@
 #define SERIAL_SPEED 115200
 
 // Firmware identity. Surfaced to the mobile/web client via GET /api/info
-// ("fwVersion"). Bump on each released firmware build.
+// ("fwVersion") and used by the in-app updater to detect new releases.
+// Overridable at build time: CI injects -DFIRMWARE_VERSION='"X.Y.Z"' from the
+// release tag (see .github/workflows/firmware-release.yml); local builds use
+// the default below.
+#ifndef FIRMWARE_VERSION
 #define FIRMWARE_VERSION "1.0.0"
+#endif
 
 // ============================================================================
 // TARGET BOARD: Adafruit Feather ESP32-S2 (WiFi-only, no Bluetooth)

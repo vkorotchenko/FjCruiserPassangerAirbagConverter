@@ -1,0 +1,95 @@
+# Firmware release pipeline.
+# Triggered by pushing a tag matching `firmware-v*` (e.g. `firmware-v1.0.1`).
+# Builds the ESP32-S2 firmware (stamped with the tag version) and publishes a
+# GitHub Release containing `fj-ocs-firmware-<version>.bin` + a SHA256 sidecar.
+# The in-app firmware updater (mobile/) consumes those assets to flash the
+# converter over WiFi.
+
+name: Firmware Release
+
+on:
+  push:
+    tags:
+      - 'firmware-v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: firmware-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Derive version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#firmware-v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "firmware tag must be firmware-vMAJOR.MINOR.PATCH (got: ${GITHUB_REF_NAME})"
+            exit 1
+          fi
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "Resolved firmware version ${VERSION}"
+
+      - name: Stamp firmware version
+        # Rewrite the default FIRMWARE_VERSION in config.h to the tag version so
+        # the running firmware reports it via GET /api/info.
+        run: |
+          sed -i "s/#define FIRMWARE_VERSION \"[^\"]*\"/#define FIRMWARE_VERSION \"${VERSION}\"/" src/config.h
+          grep -n 'FIRMWARE_VERSION' src/config.h
+
+      - name: Build firmware
+        run: pio run -e adafruit_feather_esp32s2
+
+      - name: Stage release artifacts
+        run: |
+          mkdir -p dist
+          BIN=.pio/build/adafruit_feather_esp32s2/firmware.bin
+          if [ ! -f "$BIN" ]; then echo "firmware.bin not found"; exit 1; fi
+          cp "$BIN" "dist/fj-ocs-firmware-${VERSION}.bin"
+          ( cd dist && sha256sum "fj-ocs-firmware-${VERSION}.bin" > "fj-ocs-firmware-${VERSION}.bin.sha256" )
+          ls -lh dist/
+
+      - name: Write build summary
+        run: |
+          BIN="dist/fj-ocs-firmware-${VERSION}.bin"
+          SIZE_BYTES=$(stat -c%s "$BIN")
+          DIGEST=$(awk '{print $1}' "${BIN}.sha256")
+          {
+            echo "## FJ OCS Firmware ${VERSION}"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Version | \`${VERSION}\` |"
+            echo "| Tag | \`${GITHUB_REF_NAME}\` |"
+            echo "| Binary | \`fj-ocs-firmware-${VERSION}.bin\` |"
+            echo "| Size | ${SIZE_BYTES} bytes |"
+            echo "| SHA256 | \`${DIGEST}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: FJ OCS Firmware ${{ env.VERSION }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
+          files: |
+            dist/fj-ocs-firmware-${{ env.VERSION }}.bin
+            dist/fj-ocs-firmware-${{ env.VERSION }}.bin.sha256

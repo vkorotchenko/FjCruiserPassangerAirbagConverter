@@ -25,7 +25,8 @@ RELEASE_APK_DIR := mobile/android/app/build/outputs/apk/release
 	mobile-install mobile-start mobile-metro mobile-android mobile-android-fresh \
 	mobile-android-release mobile-android-release-install mobile-android-bundle \
 	mobile-ios reset-android-cache \
-	release-mobile-patch release-mobile-minor release-mobile-major
+	release-mobile-patch release-mobile-minor release-mobile-major \
+	release-firmware-patch release-firmware-minor release-firmware-major
 
 help: ## Show this help
 	@echo "Targets:"
@@ -191,5 +192,98 @@ release-mobile-major: ## Mobile: bump major, tag mobile-v*, push (auto-detects n
 	fi; \
 	echo "Releasing mobile v$$next..."; \
 	git tag -a "$$tag" -m "Mobile release v$$next" && \
+	git push origin "$$tag" && \
+	echo "✅ Tagged and pushed $$tag"
+
+# ----------------------------------------------------------------------------
+# Firmware release: bump version, tag `firmware-v*`, and push. The push triggers
+# .github/workflows/firmware-release.yml, which builds the .bin + SHA256 and
+# publishes a GitHub Release that the in-app firmware updater consumes.
+# ----------------------------------------------------------------------------
+
+release-firmware-patch: ## Firmware: bump patch, tag firmware-v*, push (auto-detects next version)
+	@if ! git diff --quiet || ! git diff --cached --quiet; then \
+		echo "❌ Working tree is dirty. Commit or stash changes before tagging a release."; \
+		exit 1; \
+	fi
+	@git fetch origin >/dev/null 2>&1 || true
+	@if ! git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then \
+		echo "❌ HEAD is ahead of origin/main. Push your commits first."; \
+		exit 1; \
+	fi
+	@latest=$$(git tag -l 'firmware-v*' | sort -V | tail -n 1); \
+	if [ -z "$$latest" ]; then \
+		next="1.0.0"; \
+	else \
+		ver=$${latest#firmware-v}; \
+		major=$$(echo $$ver | awk -F. '{print $$1}'); \
+		minor=$$(echo $$ver | awk -F. '{print $$2}'); \
+		patch=$$(echo $$ver | awk -F. '{print $$3}'); \
+		next="$$major.$$minor.$$((patch + 1))"; \
+	fi; \
+	tag="firmware-v$$next"; \
+	if git rev-parse -q --verify "refs/tags/$$tag" >/dev/null; then \
+		echo "❌ Tag $$tag already exists. Aborting."; \
+		exit 1; \
+	fi; \
+	echo "Releasing firmware v$$next..."; \
+	git tag -a "$$tag" -m "Firmware release v$$next" && \
+	git push origin "$$tag" && \
+	echo "✅ Tagged and pushed $$tag"
+
+release-firmware-minor: ## Firmware: bump minor, tag firmware-v*, push (auto-detects next version)
+	@if ! git diff --quiet || ! git diff --cached --quiet; then \
+		echo "❌ Working tree is dirty. Commit or stash changes before tagging a release."; \
+		exit 1; \
+	fi
+	@git fetch origin >/dev/null 2>&1 || true
+	@if ! git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then \
+		echo "❌ HEAD is ahead of origin/main. Push your commits first."; \
+		exit 1; \
+	fi
+	@latest=$$(git tag -l 'firmware-v*' | sort -V | tail -n 1); \
+	if [ -z "$$latest" ]; then \
+		next="1.1.0"; \
+	else \
+		ver=$${latest#firmware-v}; \
+		major=$$(echo $$ver | awk -F. '{print $$1}'); \
+		minor=$$(echo $$ver | awk -F. '{print $$2}'); \
+		next="$$major.$$((minor + 1)).0"; \
+	fi; \
+	tag="firmware-v$$next"; \
+	if git rev-parse -q --verify "refs/tags/$$tag" >/dev/null; then \
+		echo "❌ Tag $$tag already exists. Aborting."; \
+		exit 1; \
+	fi; \
+	echo "Releasing firmware v$$next..."; \
+	git tag -a "$$tag" -m "Firmware release v$$next" && \
+	git push origin "$$tag" && \
+	echo "✅ Tagged and pushed $$tag"
+
+release-firmware-major: ## Firmware: bump major, tag firmware-v*, push (auto-detects next version)
+	@if ! git diff --quiet || ! git diff --cached --quiet; then \
+		echo "❌ Working tree is dirty. Commit or stash changes before tagging a release."; \
+		exit 1; \
+	fi
+	@git fetch origin >/dev/null 2>&1 || true
+	@if ! git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then \
+		echo "❌ HEAD is ahead of origin/main. Push your commits first."; \
+		exit 1; \
+	fi
+	@latest=$$(git tag -l 'firmware-v*' | sort -V | tail -n 1); \
+	if [ -z "$$latest" ]; then \
+		next="2.0.0"; \
+	else \
+		ver=$${latest#firmware-v}; \
+		major=$$(echo $$ver | awk -F. '{print $$1}'); \
+		next="$$((major + 1)).0.0"; \
+	fi; \
+	tag="firmware-v$$next"; \
+	if git rev-parse -q --verify "refs/tags/$$tag" >/dev/null; then \
+		echo "❌ Tag $$tag already exists. Aborting."; \
+		exit 1; \
+	fi; \
+	echo "Releasing firmware v$$next..."; \
+	git tag -a "$$tag" -m "Firmware release v$$next" && \
 	git push origin "$$tag" && \
 	echo "✅ Tagged and pushed $$tag"
