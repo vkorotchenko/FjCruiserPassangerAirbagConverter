@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The converter firmware serves its web UI over plain HTTP (and a ws:// socket)
+  on its SoftAP at 192.168.4.1 / hostname fj-ocs. Cleartext to the wider
+  internet stays disabled; we only allow it for the firmware itself.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">192.168.4.1</domain>
+        <domain includeSubdomains="false">fj-ocs</domain>
+    </domain-config>
+</network-security-config>
