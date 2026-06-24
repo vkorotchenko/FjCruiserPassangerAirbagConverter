@@ -129,6 +129,14 @@ export default function WifiSetupScreen({navigation}: Props) {
 
     setActiveBaseUrl(baseUrl);
 
+    // If we're talking to the converter over its (internet-less) AP, pin app
+    // traffic to that WiFi so later requests (e.g. POST /api/wifi) can't leak to
+    // mobile data and fail. Not done for a home-network connection, which needs
+    // internet for firmware downloads.
+    if (baseUrl === FIRMWARE_AP_URL) {
+      await bindToWifi();
+    }
+
     let info;
     try {
       info = await getInfoAt(baseUrl, 5000);
