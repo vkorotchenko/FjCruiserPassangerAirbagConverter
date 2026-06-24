@@ -14,9 +14,10 @@ It does two jobs:
      the control panel opens.
    - **Phone hotspot** — for use where there's no WiFi. Save your phone hotspot's
      name + password to the converter, switch the hotspot on (the converter
-     auto-joins it), then tap *Find converter*. Re-discovery over an Android
-     hotspot is best-effort (via `fj-ocs.local`) since the OS doesn't expose
-     hotspot client IPs to apps.
+     auto-joins it), then tap *Find converter*. Discovery tries `fj-ocs.local`
+     first, then **scans the hotspot subnet** (common Android `192.168.43.x` /
+     iOS `172.20.10.x`, plus the phone's own subnet) for a host that identifies
+     as the converter — since Android doesn't expose hotspot client IPs to apps.
 2. **Keep the converter firmware up to date.** Settings shows the converter's
    firmware version and offers an over-the-air (OTA) firmware update from this
    repo's GitHub Releases.

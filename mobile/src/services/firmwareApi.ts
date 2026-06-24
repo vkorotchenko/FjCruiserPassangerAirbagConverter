@@ -1,4 +1,4 @@
-import {FIRMWARE_AP_URL} from '../constants';
+import {FIRMWARE_AP_URL, FIRMWARE_HOSTNAME} from '../constants';
 
 /** Shape of `GET /api/info` from the firmware (src/WebInterface.cpp). */
 export interface FirmwareInfo {
@@ -123,6 +123,71 @@ export async function probeUntilReachable(
       return url;
     }
     await delay(interval);
+  }
+  return null;
+}
+
+/**
+ * Last resort when mDNS fails (e.g. finding the converter on an Android phone
+ * hotspot, where `.local` resolution and client-IP enumeration aren't available
+ * to apps): scan the likely hotspot subnets for a host whose `GET /api/info`
+ * identifies as our converter (hostname === FIRMWARE_HOSTNAME).
+ *
+ * Scans, low-host-first, in parallel batches and stops at the first match:
+ *   - any `extraSubnets` (e.g. derived from the phone's own IP) first,
+ *   - 192.168.43.x (classic Android SoftAP),
+ *   - 172.20.10.x (iOS personal hotspot, .2–.14).
+ */
+export async function scanForConverter(opts: {
+  extraSubnets?: string[];
+  perTryMs?: number;
+  batchSize?: number;
+  onProgress?: (done: number, total: number) => void;
+} = {}): Promise<string | null> {
+  const perTry = opts.perTryMs ?? 1200;
+  const batchSize = opts.batchSize ?? 32;
+
+  const candidates: string[] = [];
+  const pushRange = (subnet: string, lo: number, hi: number) => {
+    for (let h = lo; h <= hi; h++) {
+      candidates.push(`http://${subnet}.${h}`);
+    }
+  };
+
+  const seen = new Set<string>();
+  for (const subnet of opts.extraSubnets ?? []) {
+    if (/^\d+\.\d+\.\d+$/.test(subnet) && !seen.has(subnet)) {
+      seen.add(subnet);
+      pushRange(subnet, 2, 254);
+    }
+  }
+  if (!seen.has('192.168.43')) {
+    seen.add('192.168.43');
+    pushRange('192.168.43', 2, 254);
+  }
+  pushRange('172.20.10', 2, 14); // iOS hotspot is a small /28
+
+  const total = candidates.length;
+  let done = 0;
+
+  for (let i = 0; i < candidates.length; i += batchSize) {
+    const batch = candidates.slice(i, i + batchSize);
+    const results = await Promise.all(
+      batch.map(async url => {
+        try {
+          const info = await getInfoAt(url, perTry);
+          return info && info.hostname === FIRMWARE_HOSTNAME ? url : null;
+        } catch {
+          return null;
+        }
+      }),
+    );
+    done += batch.length;
+    opts.onProgress?.(done, total);
+    const hit = results.find(r => r !== null);
+    if (hit) {
+      return hit;
+    }
   }
   return null;
 }

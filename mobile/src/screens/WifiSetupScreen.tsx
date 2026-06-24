@@ -38,6 +38,7 @@ import {
   pingFirmware,
   probeFirstReachable,
   probeUntilReachable,
+  scanForConverter,
 } from '../services/firmwareApi';
 import {
   FIRMWARE_AP_SSID,
@@ -318,15 +319,42 @@ export default function WifiSetupScreen({navigation}: Props) {
   const handleFindConverter = useCallback(async () => {
     setHotspotError(null);
     setHotspotStep('finding');
+    setStatus('Looking for the converter on your hotspot…');
+
+    // Make sure app traffic isn't still pinned to the converter's (now gone) AP
+    // network, so it can route over the phone's hotspot subnet.
+    await releaseForcedWifi();
 
     const {lastStaIp} = useAppStore.getState();
-    const candidates = [FIRMWARE_MDNS_URL];
-    if (lastStaIp) {
-      candidates.push(`http://${lastStaIp}`);
-    }
-    console.log(`[fj-ocs] hotspot find: probing [${candidates.join(', ')}]`);
 
-    const url = await probeUntilReachable(candidates, {totalMs: 45000});
+    // 1. Quick try: mDNS name + last-known IP.
+    const quick = [FIRMWARE_MDNS_URL];
+    if (lastStaIp) {
+      quick.push(`http://${lastStaIp}`);
+    }
+    console.log(`[fj-ocs] hotspot find: quick probe [${quick.join(', ')}]`);
+    let url = await probeUntilReachable(quick, {totalMs: 8000});
+
+    // 2. Fallback: scan likely hotspot subnets (mDNS often fails over Android
+    //    tethering). Seed with the phone's own subnet if we can read it.
+    if (!url) {
+      const net = await getNetworkInfo();
+      const extra: string[] = [];
+      const m = net.ip ? /^(\d+\.\d+\.\d+)\.\d+$/.exec(net.ip) : null;
+      if (m) {
+        extra.push(m[1]);
+      }
+      console.log(
+        `[fj-ocs] hotspot find: scanning subnets (phone ip=${net.ip ?? '?'})`,
+      );
+      setStatus('Scanning your hotspot for the converter…');
+      url = await scanForConverter({
+        extraSubnets: extra,
+        onProgress: (d, t) =>
+          setStatus(`Scanning your hotspot for the converter… (${d}/${t})`),
+      });
+    }
+
     if (!url) {
       setHotspotStep('instructions');
       setHotspotError(
@@ -504,7 +532,7 @@ export default function WifiSetupScreen({navigation}: Props) {
                 <Surface style={styles.statusCard} elevation={1}>
                   <ActivityIndicator animating />
                   <Text variant="bodyMedium" style={styles.statusText}>
-                    Looking for the converter on your hotspot…
+                    {status}
                   </Text>
                 </Surface>
               ) : hotspotStep === 'instructions' ? (
