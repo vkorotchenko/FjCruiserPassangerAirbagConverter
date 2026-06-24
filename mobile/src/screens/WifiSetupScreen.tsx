@@ -143,6 +143,38 @@ export default function WifiSetupScreen({navigation}: Props) {
       }`,
     );
 
+    // If the quick probe missed but the converter was configured before, scan
+    // the current network for it (its IP may have changed, or it's on the phone
+    // hotspot where mDNS doesn't resolve) before resorting to the setup AP.
+    if (!baseUrl) {
+      const store = useAppStore.getState();
+      const configured = !!(
+        store.lastStaIp ||
+        store.homeSsid ||
+        store.hotspotSsid
+      );
+      if (configured) {
+        setStatus('Searching for the converter on your network…');
+        const net = await getNetworkInfo();
+        const extra: string[] = [];
+        const m = net.ip ? /^(\d+\.\d+\.\d+)\.\d+$/.exec(net.ip) : null;
+        if (m) {
+          extra.push(m[1]);
+        }
+        console.log(
+          `[fj-ocs] launch scan (phone ip=${net.ip ?? '?'} subnet=${
+            m ? m[1] : '?'
+          })`,
+        );
+        baseUrl = await scanForConverter({
+          extraSubnets: extra,
+          includeCommonHotspotSubnets: extra.length === 0,
+          onProgress: (d, t) =>
+            setStatus(`Searching for the converter… (${d}/${t})`),
+        });
+      }
+    }
+
     if (!baseUrl) {
       setPhase('joining-ap');
       setStatus(`Joining the converter’s WiFi (${FIRMWARE_AP_SSID})…`);

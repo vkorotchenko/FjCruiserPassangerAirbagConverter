@@ -5,6 +5,7 @@ const SSID_KEY = 'fjocs.homeSsid';
 const PASS_KEY = 'fjocs.homePassword';
 const HOTSPOT_SSID_KEY = 'fjocs.hotspotSsid';
 const HOTSPOT_PASS_KEY = 'fjocs.hotspotPassword';
+const LAST_STAIP_KEY = 'fjocs.lastStaIp';
 
 /** Phases of the firmware OTA flow. */
 export type FirmwareUpdateState =
@@ -107,15 +108,31 @@ export const useAppStore = create<AppState>(set => ({
     set({hotspotPassword: pass});
     AsyncStorage.setItem(HOTSPOT_PASS_KEY, pass).catch(() => {});
   },
-  setLastStaIp: ip => set({lastStaIp: ip}),
+  setLastStaIp: ip => {
+    set({lastStaIp: ip});
+    // Persist so the next launch can reconnect directly (esp. over a hotspot,
+    // where mDNS doesn't resolve). null clears it.
+    if (ip) {
+      AsyncStorage.setItem(LAST_STAIP_KEY, ip).catch(() => {});
+    } else {
+      AsyncStorage.removeItem(LAST_STAIP_KEY).catch(() => {});
+    }
+  },
   clearStoredWifi: async () => {
-    set({homeSsid: '', homePassword: '', hotspotSsid: '', hotspotPassword: ''});
+    set({
+      homeSsid: '',
+      homePassword: '',
+      hotspotSsid: '',
+      hotspotPassword: '',
+      lastStaIp: null,
+    });
     try {
       await AsyncStorage.multiRemove([
         SSID_KEY,
         PASS_KEY,
         HOTSPOT_SSID_KEY,
         HOTSPOT_PASS_KEY,
+        LAST_STAIP_KEY,
       ]);
     } catch {
       // ignore — non-fatal
@@ -123,17 +140,19 @@ export const useAppStore = create<AppState>(set => ({
   },
   hydrate: async () => {
     try {
-      const [ssid, pass, hsSsid, hsPass] = await Promise.all([
+      const [ssid, pass, hsSsid, hsPass, staIp] = await Promise.all([
         AsyncStorage.getItem(SSID_KEY),
         AsyncStorage.getItem(PASS_KEY),
         AsyncStorage.getItem(HOTSPOT_SSID_KEY),
         AsyncStorage.getItem(HOTSPOT_PASS_KEY),
+        AsyncStorage.getItem(LAST_STAIP_KEY),
       ]);
       set({
         homeSsid: ssid ?? '',
         homePassword: pass ?? '',
         hotspotSsid: hsSsid ?? '',
         hotspotPassword: hsPass ?? '',
+        lastStaIp: staIp ?? null,
       });
     } catch {
       // ignore — non-fatal

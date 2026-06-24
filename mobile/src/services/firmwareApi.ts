@@ -140,12 +140,14 @@ export async function probeUntilReachable(
  */
 export async function scanForConverter(opts: {
   extraSubnets?: string[];
+  includeCommonHotspotSubnets?: boolean;
   perTryMs?: number;
   batchSize?: number;
   onProgress?: (done: number, total: number) => void;
 } = {}): Promise<string | null> {
   const perTry = opts.perTryMs ?? 1200;
   const batchSize = opts.batchSize ?? 32;
+  const includeCommon = opts.includeCommonHotspotSubnets ?? true;
 
   const candidates: string[] = [];
   const pushRange = (subnet: string, lo: number, hi: number) => {
@@ -161,11 +163,13 @@ export async function scanForConverter(opts: {
       pushRange(subnet, 2, 254);
     }
   }
-  if (!seen.has('192.168.43')) {
-    seen.add('192.168.43');
-    pushRange('192.168.43', 2, 254);
+  if (includeCommon) {
+    if (!seen.has('192.168.43')) {
+      seen.add('192.168.43');
+      pushRange('192.168.43', 2, 254); // classic Android SoftAP
+    }
+    pushRange('172.20.10', 2, 14); // iOS personal hotspot (/28)
   }
-  pushRange('172.20.10', 2, 14); // iOS hotspot is a small /28
 
   const total = candidates.length;
   let done = 0;
