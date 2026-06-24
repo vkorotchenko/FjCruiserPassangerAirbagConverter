@@ -69,7 +69,6 @@ static void startWifi() {
     // Log the home-network (STA) connection lifecycle so WiFi configuration is
     // visible in the serial/web log even with DEBUG output paused.
     WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
-        (void) info;
         switch (event) {
         case ARDUINO_EVENT_WIFI_STA_CONNECTED:
             Logger::info("WiFi: associated with home network, awaiting IP");
@@ -80,6 +79,16 @@ static void startWifi() {
             break;
         case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
             Logger::info("WiFi: lost home network connection");
+            break;
+        case ARDUINO_EVENT_WIFI_AP_STACONNECTED:
+            Logger::info("WiFi: a device joined the setup AP");
+            break;
+        case ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED:
+            Logger::info("WiFi: setup-AP client got IP %s",
+                         IPAddress(info.wifi_ap_staipassigned.ip.addr).toString().c_str());
+            break;
+        case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED:
+            Logger::info("WiFi: a device left the setup AP");
             break;
         default:
             break;
@@ -124,6 +133,8 @@ static void setupRoutes() {
             JsonObject body = json.as<JsonObject>();
             String ssid = body["ssid"] | "";
             String pass = body["pass"] | "";
+            IPAddress from = req->client() ? req->client()->remoteIP() : IPAddress(0, 0, 0, 0);
+            Logger::info("WiFi: /api/wifi POST from %s", from.toString().c_str());
             if (!ssid.length()) { req->send(400, "application/json", "{\"ok\":false,\"err\":\"ssid required\"}"); return; }
             Logger::info("WiFi: received new credentials for '%s'", ssid.c_str());
             // Defer the NVS write + reconnect to loop() (see wifiApplyPending);

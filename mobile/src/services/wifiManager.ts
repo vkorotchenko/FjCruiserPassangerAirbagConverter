@@ -26,6 +26,31 @@ export async function getCurrentSsid(): Promise<string | null> {
 }
 
 /**
+ * Best-effort snapshot of the phone's current WiFi network for diagnostics:
+ * the SSID it's joined to and the IP address it holds on that network.
+ */
+export async function getNetworkInfo(): Promise<{
+  ssid: string | null;
+  ip: string | null;
+}> {
+  let ssid: string | null = null;
+  let ip: string | null = null;
+  try {
+    ssid = await getCurrentSsid();
+  } catch {
+    // ignore
+  }
+  if (Platform.OS === 'android') {
+    try {
+      ip = await WifiManager.getIP();
+    } catch {
+      // ignore — getIP is Android-only / may fail when off WiFi
+    }
+  }
+  return {ssid, ip};
+}
+
+/**
  * Join the firmware's SoftAP so we can reach it at 192.168.4.1. Throws if the
  * join fails (the UI then falls back to a guided manual join).
  */

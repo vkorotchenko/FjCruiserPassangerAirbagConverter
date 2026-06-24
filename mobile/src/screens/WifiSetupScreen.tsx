@@ -22,14 +22,17 @@ import {useAppStore} from '../store/useAppStore';
 import {requestWifiPermissions} from '../services/permissions';
 import {
   getCurrentSsid,
+  getNetworkInfo,
   connectToFirmwareAp,
   bindToWifi,
 } from '../services/wifiManager';
 import {
   setActiveBaseUrl,
+  getActiveBaseUrl,
   getInfoAt,
   postWifi,
   waitForStation,
+  pingFirmware,
   probeFirstReachable,
 } from '../services/firmwareApi';
 import {
@@ -102,6 +105,11 @@ export default function WifiSetupScreen({navigation}: Props) {
     candidates.push(FIRMWARE_MDNS_URL);
 
     let baseUrl = await probeFirstReachable(candidates, 3000);
+    console.log(
+      `[fj-ocs] probe candidates [${candidates.join(', ')}] -> ${
+        baseUrl ?? 'none reachable'
+      }`,
+    );
 
     // Not reachable anywhere → join the AP to (re)configure.
     if (!baseUrl) {
@@ -128,6 +136,11 @@ export default function WifiSetupScreen({navigation}: Props) {
     }
 
     setActiveBaseUrl(baseUrl);
+    console.log(
+      `[fj-ocs] active converter address = ${baseUrl}${
+        baseUrl === FIRMWARE_AP_URL ? ' (setup AP)' : ' (home network)'
+      }`,
+    );
 
     // If we're talking to the converter over its (internet-less) AP, pin app
     // traffic to that WiFi so later requests (e.g. POST /api/wifi) can't leak to
@@ -180,6 +193,45 @@ export default function WifiSetupScreen({navigation}: Props) {
     setHomePassword(password);
 
     setPhase('submitting');
+
+    const target = getActiveBaseUrl();
+    const net = await getNetworkInfo();
+    console.log(
+      `[fj-ocs] POST /api/wifi -> ${target} | phone network SSID=${
+        net.ssid ?? '?'
+      } ip=${net.ip ?? '?'}`,
+    );
+
+    // Android can silently drop an internet-less AP while the user types the
+    // password (the GET /api/info that got us here succeeded, but the later
+    // POST then leaks to mobile data → a gateway 502). Re-assert the WiFi
+    // binding and reachability — rejoining the AP if needed — before posting.
+    if (target === FIRMWARE_AP_URL) {
+      setStatus('Reconnecting to the converter…');
+      await bindToWifi();
+      if (!(await pingFirmware(4000))) {
+        try {
+          await connectToFirmwareAp();
+          await bindToWifi();
+        } catch {
+          // handled by the reachability check below
+        }
+        if (!(await pingFirmware(6000))) {
+          const after = await getNetworkInfo();
+          console.log(
+            `[fj-ocs] converter unreachable before POST | phone SSID=${
+              after.ssid ?? '?'
+            } ip=${after.ip ?? '?'}`,
+          );
+          setPhase('need-setup');
+          setFormError(
+            `Lost the connection to the converter. Make sure you’re joined to “${FIRMWARE_AP_SSID}”, then try again.`,
+          );
+          return;
+        }
+      }
+    }
+
     setStatus('Sending your WiFi details to the converter…');
     try {
       await postWifi(trimmed, password);
