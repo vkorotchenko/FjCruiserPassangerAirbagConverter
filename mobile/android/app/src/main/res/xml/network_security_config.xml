@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The converter serves its web UI and accepts OTA uploads over plain HTTP. On
+  the home network its IP is assigned by DHCP (any private subnet) and it is
+  also reachable as fj-ocs.local, so we can't enumerate a fixed domain list —
+  cleartext is permitted generally. This is low-risk here: the only cleartext
+  traffic is to the local converter; GitHub release downloads use HTTPS.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
