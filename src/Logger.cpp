@@ -27,9 +27,9 @@
 #include "Logger.h"
 #include "control_protocol.h"   // CONTROL_LINE_MAX
 
-// Default to Info so routine DEBUG chatter stays off the serial/web log. Raise
-// to Debug here (or via a future control) when diagnosing.
-Logger::LogLevel Logger::logLevel = Logger::Info;
+// Debug-level output is enabled. Set to Logger::Info to quiet routine DEBUG
+// chatter (e.g. for field use).
+Logger::LogLevel Logger::logLevel = Logger::Debug;
 uint32_t Logger::lastLogTime = 0;
 LogSink *Logger::sink = nullptr;
 
