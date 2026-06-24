@@ -4,6 +4,7 @@ import {
   StyleSheet,
   View,
   Platform,
+  Linking,
   KeyboardAvoidingView,
 } from 'react-native';
 import {
@@ -14,6 +15,7 @@ import {
   HelperText,
   ActivityIndicator,
   Surface,
+  SegmentedButtons,
 } from 'react-native-paper';
 import type {StackScreenProps} from '@react-navigation/stack';
 
@@ -25,6 +27,7 @@ import {
   getNetworkInfo,
   connectToFirmwareAp,
   bindToWifi,
+  releaseForcedWifi,
 } from '../services/wifiManager';
 import {
   setActiveBaseUrl,
@@ -34,6 +37,7 @@ import {
   waitForStation,
   pingFirmware,
   probeFirstReachable,
+  probeUntilReachable,
 } from '../services/firmwareApi';
 import {
   FIRMWARE_AP_SSID,
@@ -44,6 +48,8 @@ import {
 type Props = StackScreenProps<RootStackParamList, 'Setup'>;
 
 type Phase = 'probing' | 'joining-ap' | 'need-setup' | 'submitting' | 'error';
+type Mode = 'wifi' | 'hotspot';
+type HotspotStep = 'form' | 'saving' | 'instructions' | 'finding';
 
 function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -52,6 +58,8 @@ function messageOf(err: unknown): string {
 export default function WifiSetupScreen({navigation}: Props) {
   const setHomeSsid = useAppStore(s => s.setHomeSsid);
   const setHomePassword = useAppStore(s => s.setHomePassword);
+  const setHotspotSsidStore = useAppStore(s => s.setHotspotSsid);
+  const setHotspotPasswordStore = useAppStore(s => s.setHotspotPassword);
   const setLastStaIp = useAppStore(s => s.setLastStaIp);
   const setFirmwareVersion = useAppStore(s => s.setFirmwareVersion);
   const hydrate = useAppStore(s => s.hydrate);
@@ -59,11 +67,20 @@ export default function WifiSetupScreen({navigation}: Props) {
   const [phase, setPhase] = useState<Phase>('probing');
   const [status, setStatus] = useState('Looking for the converter…');
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<Mode>('wifi');
 
+  // Home-WiFi tab
   const [ssid, setSsid] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Hotspot tab
+  const [hsSsid, setHsSsid] = useState('');
+  const [hsPass, setHsPass] = useState('');
+  const [showHsPass, setShowHsPass] = useState(false);
+  const [hotspotStep, setHotspotStep] = useState<HotspotStep>('form');
+  const [hotspotError, setHotspotError] = useState<string | null>(null);
 
   const startedRef = useRef(false);
 
@@ -74,8 +91,26 @@ export default function WifiSetupScreen({navigation}: Props) {
     [navigation],
   );
 
-  // Find the converter (direct on the home network, or via its AP), decide
-  // whether it is already configured, and route accordingly.
+  // Ensure we can actually reach the converter over its AP before a POST.
+  // Android can drop an internet-less AP while the user types; re-bind, re-check
+  // and rejoin if needed. For a home-network connection this is a no-op.
+  const ensureOnConverterAp = useCallback(async (): Promise<boolean> => {
+    if (getActiveBaseUrl() !== FIRMWARE_AP_URL) {
+      return true;
+    }
+    await bindToWifi();
+    if (await pingFirmware(4000)) {
+      return true;
+    }
+    try {
+      await connectToFirmwareAp();
+      await bindToWifi();
+    } catch {
+      // handled by the reachability check below
+    }
+    return pingFirmware(6000);
+  }, []);
+
   const bootstrap = useCallback(async () => {
     setError(null);
     setFormError(null);
@@ -85,8 +120,6 @@ export default function WifiSetupScreen({navigation}: Props) {
     await hydrate();
     const granted = await requestWifiPermissions();
 
-    // Capture the phone's current network *before* we might join the AP, so we
-    // can pre-fill the home SSID on a fresh setup.
     let detectedHomeSsid: string | null = null;
     if (granted) {
       const cur = await getCurrentSsid();
@@ -95,8 +128,6 @@ export default function WifiSetupScreen({navigation}: Props) {
       }
     }
 
-    // Probe known addresses in parallel: the always-on AP, the last home IP,
-    // and the mDNS name.
     const {lastStaIp} = useAppStore.getState();
     const candidates = [FIRMWARE_AP_URL];
     if (lastStaIp) {
@@ -111,7 +142,6 @@ export default function WifiSetupScreen({navigation}: Props) {
       }`,
     );
 
-    // Not reachable anywhere → join the AP to (re)configure.
     if (!baseUrl) {
       setPhase('joining-ap');
       setStatus(`Joining the converter’s WiFi (${FIRMWARE_AP_SSID})…`);
@@ -141,11 +171,6 @@ export default function WifiSetupScreen({navigation}: Props) {
         baseUrl === FIRMWARE_AP_URL ? ' (setup AP)' : ' (home network)'
       }`,
     );
-
-    // If we're talking to the converter over its (internet-less) AP, pin app
-    // traffic to that WiFi so later requests (e.g. POST /api/wifi) can't leak to
-    // mobile data and fail. Not done for a home-network connection, which needs
-    // internet for firmware downloads.
     if (baseUrl === FIRMWARE_AP_URL) {
       await bindToWifi();
     }
@@ -160,17 +185,18 @@ export default function WifiSetupScreen({navigation}: Props) {
     }
     setFirmwareVersion(info.fwVersion ?? null);
 
-    // Already on the home network → straight to the control panel.
     if (info.staOk && info.staIp && info.staIp !== '0.0.0.0') {
       setLastStaIp(info.staIp);
       goConnected(info.staIp);
       return;
     }
 
-    // Needs configuring → show the form (pre-filled).
-    const {homeSsid, homePassword} = useAppStore.getState();
-    setSsid(detectedHomeSsid || homeSsid || '');
-    setPassword(homePassword || '');
+    const store = useAppStore.getState();
+    setSsid(detectedHomeSsid || store.homeSsid || '');
+    setPassword(store.homePassword || '');
+    setHsSsid(store.hotspotSsid || '');
+    setHsPass(store.hotspotPassword || '');
+    setHotspotStep('form');
     setPhase('need-setup');
   }, [hydrate, goConnected, setFirmwareVersion, setLastStaIp]);
 
@@ -182,6 +208,7 @@ export default function WifiSetupScreen({navigation}: Props) {
     bootstrap();
   }, [bootstrap]);
 
+  // --- Home WiFi connect -----------------------------------------------------
   const handleConnect = useCallback(async () => {
     const trimmed = ssid.trim();
     if (!trimmed) {
@@ -193,43 +220,20 @@ export default function WifiSetupScreen({navigation}: Props) {
     setHomePassword(password);
 
     setPhase('submitting');
-
-    const target = getActiveBaseUrl();
     const net = await getNetworkInfo();
     console.log(
-      `[fj-ocs] POST /api/wifi -> ${target} | phone network SSID=${
+      `[fj-ocs] POST /api/wifi -> ${getActiveBaseUrl()} | phone SSID=${
         net.ssid ?? '?'
       } ip=${net.ip ?? '?'}`,
     );
 
-    // Android can silently drop an internet-less AP while the user types the
-    // password (the GET /api/info that got us here succeeded, but the later
-    // POST then leaks to mobile data → a gateway 502). Re-assert the WiFi
-    // binding and reachability — rejoining the AP if needed — before posting.
-    if (target === FIRMWARE_AP_URL) {
-      setStatus('Reconnecting to the converter…');
-      await bindToWifi();
-      if (!(await pingFirmware(4000))) {
-        try {
-          await connectToFirmwareAp();
-          await bindToWifi();
-        } catch {
-          // handled by the reachability check below
-        }
-        if (!(await pingFirmware(6000))) {
-          const after = await getNetworkInfo();
-          console.log(
-            `[fj-ocs] converter unreachable before POST | phone SSID=${
-              after.ssid ?? '?'
-            } ip=${after.ip ?? '?'}`,
-          );
-          setPhase('need-setup');
-          setFormError(
-            `Lost the connection to the converter. Make sure you’re joined to “${FIRMWARE_AP_SSID}”, then try again.`,
-          );
-          return;
-        }
-      }
+    setStatus('Reconnecting to the converter…');
+    if (!(await ensureOnConverterAp())) {
+      setPhase('need-setup');
+      setFormError(
+        `Lost the connection to the converter. Make sure you’re joined to “${FIRMWARE_AP_SSID}”, then try again.`,
+      );
+      return;
     }
 
     setStatus('Sending your WiFi details to the converter…');
@@ -265,9 +269,148 @@ export default function WifiSetupScreen({navigation}: Props) {
     setFirmwareVersion,
     setLastStaIp,
     goConnected,
+    ensureOnConverterAp,
   ]);
 
+  // --- Hotspot: save credentials to the converter ----------------------------
+  const handleSaveHotspot = useCallback(async () => {
+    const trimmed = hsSsid.trim();
+    if (!trimmed) {
+      setHotspotError('Enter your phone hotspot’s name (SSID).');
+      return;
+    }
+    setHotspotError(null);
+    setHotspotSsidStore(trimmed);
+    setHotspotPasswordStore(hsPass);
+
+    setHotspotStep('saving');
+    const net = await getNetworkInfo();
+    console.log(
+      `[fj-ocs] hotspot save -> ${getActiveBaseUrl()} | phone SSID=${
+        net.ssid ?? '?'
+      } ip=${net.ip ?? '?'}`,
+    );
+
+    if (!(await ensureOnConverterAp())) {
+      setHotspotStep('form');
+      setHotspotError(
+        `Lost the connection to the converter. Rejoin “${FIRMWARE_AP_SSID}” and try again.`,
+      );
+      return;
+    }
+
+    try {
+      await postWifi(trimmed, hsPass);
+    } catch (e) {
+      setHotspotStep('form');
+      setHotspotError(messageOf(e));
+      return;
+    }
+
+    // Credentials saved. The converter will keep retrying and will join the
+    // hotspot once it's switched on. Release the AP binding so traffic can move
+    // to the hotspot network next.
+    await releaseForcedWifi();
+    setHotspotStep('instructions');
+  }, [hsSsid, hsPass, setHotspotSsidStore, setHotspotPasswordStore, ensureOnConverterAp]);
+
+  // --- Hotspot: find the converter once the hotspot is on --------------------
+  const handleFindConverter = useCallback(async () => {
+    setHotspotError(null);
+    setHotspotStep('finding');
+
+    const {lastStaIp} = useAppStore.getState();
+    const candidates = [FIRMWARE_MDNS_URL];
+    if (lastStaIp) {
+      candidates.push(`http://${lastStaIp}`);
+    }
+    console.log(`[fj-ocs] hotspot find: probing [${candidates.join(', ')}]`);
+
+    const url = await probeUntilReachable(candidates, {totalMs: 45000});
+    if (!url) {
+      setHotspotStep('instructions');
+      setHotspotError(
+        'Couldn’t find the converter on your hotspot. Make sure the hotspot is on with the exact name and password you entered, then try again.',
+      );
+      return;
+    }
+
+    setActiveBaseUrl(url);
+    let info;
+    try {
+      info = await getInfoAt(url, 5000);
+    } catch {
+      setHotspotStep('instructions');
+      setHotspotError('Found the converter but lost it. Try again.');
+      return;
+    }
+    setFirmwareVersion(info.fwVersion ?? null);
+    if (info.staIp && info.staIp !== '0.0.0.0') {
+      setLastStaIp(info.staIp);
+    }
+    goConnected(info.staIp);
+  }, [goConnected, setFirmwareVersion, setLastStaIp]);
+
+  const openHotspotSettings = useCallback(() => {
+    if (Platform.OS === 'android') {
+      Linking.sendIntent('android.settings.TETHER_SETTINGS').catch(() => {
+        Linking.openSettings().catch(() => {});
+      });
+    } else {
+      Linking.openSettings().catch(() => {});
+    }
+  }, []);
+
   const submitting = phase === 'submitting';
+  const hotspotBusy = hotspotStep === 'saving' || hotspotStep === 'finding';
+  const tabsDisabled = submitting || hotspotBusy;
+
+  if (phase === 'probing' || phase === 'joining-ap') {
+    return (
+      <View style={styles.flex}>
+        <Appbar.Header>
+          <Appbar.Content title="FJ OCS Setup" />
+          <Appbar.Action
+            icon="cog"
+            accessibilityLabel="Settings"
+            onPress={() => navigation.navigate('Settings')}
+          />
+        </Appbar.Header>
+        <View style={styles.center}>
+          <ActivityIndicator animating size="large" />
+          <Text variant="bodyMedium" style={styles.centerText}>
+            {status}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (phase === 'error') {
+    return (
+      <View style={styles.flex}>
+        <Appbar.Header>
+          <Appbar.Content title="FJ OCS Setup" />
+          <Appbar.Action
+            icon="cog"
+            accessibilityLabel="Settings"
+            onPress={() => navigation.navigate('Settings')}
+          />
+        </Appbar.Header>
+        <View style={styles.center}>
+          <Text variant="titleMedium" style={styles.errorTitle}>
+            Can’t reach the converter
+          </Text>
+          <Text variant="bodyMedium" style={styles.centerText}>
+            {error}
+          </Text>
+          <Button mode="contained" onPress={bootstrap} style={styles.retry}>
+            Retry
+          </Button>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.flex}>
@@ -280,98 +423,185 @@ export default function WifiSetupScreen({navigation}: Props) {
         />
       </Appbar.Header>
 
-      {phase === 'probing' || phase === 'joining-ap' ? (
-        <View style={styles.center}>
-          <ActivityIndicator animating size="large" />
-          <Text variant="bodyMedium" style={styles.centerText}>
-            {status}
-          </Text>
-        </View>
-      ) : phase === 'error' ? (
-        <View style={styles.center}>
-          <Text variant="titleMedium" style={styles.errorTitle}>
-            Can’t reach the converter
-          </Text>
-          <Text variant="bodyMedium" style={styles.centerText}>
-            {error}
-          </Text>
-          <Button mode="contained" onPress={bootstrap} style={styles.retry}>
-            Retry
-          </Button>
-        </View>
-      ) : (
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <ScrollView
-            contentContainerStyle={styles.content}
-            keyboardShouldPersistTaps="handled">
-            <Text variant="titleMedium" style={styles.heading}>
-              Put the converter on your WiFi
-            </Text>
-            <Text variant="bodyMedium" style={styles.intro}>
-              Enter your home WiFi name and password. The converter joins your
-              network and its control panel opens.
-            </Text>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled">
+          <SegmentedButtons
+            value={mode}
+            onValueChange={v => setMode(v as Mode)}
+            style={styles.tabs}
+            buttons={[
+              {value: 'wifi', label: 'Home WiFi', disabled: tabsDisabled},
+              {value: 'hotspot', label: 'Phone hotspot', disabled: tabsDisabled},
+            ]}
+          />
 
-            <TextInput
-              label="WiFi name (SSID)"
-              value={ssid}
-              onChangeText={setSsid}
-              mode="outlined"
-              autoCapitalize="none"
-              autoCorrect={false}
-              disabled={submitting}
-              style={styles.input}
-            />
-            <TextInput
-              label="WiFi password"
-              value={password}
-              onChangeText={setPassword}
-              mode="outlined"
-              autoCapitalize="none"
-              autoCorrect={false}
-              secureTextEntry={!showPassword}
-              disabled={submitting}
-              right={
-                <TextInput.Icon
-                  icon={showPassword ? 'eye-off' : 'eye'}
-                  onPress={() => setShowPassword(v => !v)}
-                  forceTextInputFocus={false}
-                />
-              }
-              style={styles.input}
-            />
-            <HelperText type="info" visible>
-              Leave the password blank only for open networks.
-            </HelperText>
-
-            {formError ? (
-              <HelperText type="error" visible style={styles.error}>
-                {formError}
+          {mode === 'wifi' ? (
+            <View>
+              <Text variant="bodyMedium" style={styles.intro}>
+                Enter your home WiFi name and password. The converter joins your
+                network and its control panel opens.
+              </Text>
+              <TextInput
+                label="WiFi name (SSID)"
+                value={ssid}
+                onChangeText={setSsid}
+                mode="outlined"
+                autoCapitalize="none"
+                autoCorrect={false}
+                disabled={submitting}
+                style={styles.input}
+              />
+              <TextInput
+                label="WiFi password"
+                value={password}
+                onChangeText={setPassword}
+                mode="outlined"
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry={!showPassword}
+                disabled={submitting}
+                right={
+                  <TextInput.Icon
+                    icon={showPassword ? 'eye-off' : 'eye'}
+                    onPress={() => setShowPassword(v => !v)}
+                    forceTextInputFocus={false}
+                  />
+                }
+                style={styles.input}
+              />
+              <HelperText type="info" visible>
+                Leave the password blank only for open networks.
               </HelperText>
-            ) : null}
-
-            <Button
-              mode="contained"
-              onPress={handleConnect}
-              disabled={submitting}
-              loading={submitting}
-              style={styles.button}>
-              {submitting ? 'Connecting…' : 'Connect'}
-            </Button>
-
-            {submitting ? (
-              <Surface style={styles.statusCard} elevation={1}>
-                <ActivityIndicator animating />
-                <Text variant="bodyMedium" style={styles.statusText}>
-                  {status}
-                </Text>
-              </Surface>
-            ) : null}
-          </ScrollView>
-        </KeyboardAvoidingView>
-      )}
+              {formError ? (
+                <HelperText type="error" visible style={styles.error}>
+                  {formError}
+                </HelperText>
+              ) : null}
+              <Button
+                mode="contained"
+                onPress={handleConnect}
+                disabled={submitting}
+                loading={submitting}
+                style={styles.button}>
+                {submitting ? 'Connecting…' : 'Connect'}
+              </Button>
+              {submitting ? (
+                <Surface style={styles.statusCard} elevation={1}>
+                  <ActivityIndicator animating />
+                  <Text variant="bodyMedium" style={styles.statusText}>
+                    {status}
+                  </Text>
+                </Surface>
+              ) : null}
+            </View>
+          ) : (
+            <View>
+              {hotspotStep === 'finding' ? (
+                <Surface style={styles.statusCard} elevation={1}>
+                  <ActivityIndicator animating />
+                  <Text variant="bodyMedium" style={styles.statusText}>
+                    Looking for the converter on your hotspot…
+                  </Text>
+                </Surface>
+              ) : hotspotStep === 'instructions' ? (
+                <View>
+                  <Text variant="bodyMedium" style={styles.intro}>
+                    Saved to the converter. Now switch on your phone’s hotspot so
+                    it can join:
+                  </Text>
+                  <Text variant="bodyMedium" style={styles.steps}>
+                    1. Open hotspot settings.{'\n'}
+                    2. Set the name to “{hsSsid}” and the password to match what
+                    you entered.{'\n'}
+                    3. Turn the hotspot on, then come back and tap “Find
+                    converter”.
+                  </Text>
+                  {hotspotError ? (
+                    <HelperText type="error" visible style={styles.error}>
+                      {hotspotError}
+                    </HelperText>
+                  ) : null}
+                  <Button
+                    mode="outlined"
+                    icon="cellphone-wireless"
+                    onPress={openHotspotSettings}
+                    style={styles.button}>
+                    Open hotspot settings
+                  </Button>
+                  <Button
+                    mode="contained"
+                    onPress={handleFindConverter}
+                    style={styles.button}>
+                    Find converter
+                  </Button>
+                  <Button onPress={() => setHotspotStep('form')}>
+                    Edit hotspot details
+                  </Button>
+                </View>
+              ) : (
+                <View>
+                  <Text variant="bodyMedium" style={styles.intro}>
+                    Use your phone’s hotspot as the converter’s network — handy
+                    where there’s no WiFi. Enter the hotspot’s name and password
+                    (set these in your phone’s hotspot settings).
+                  </Text>
+                  <TextInput
+                    label="Hotspot name (SSID)"
+                    value={hsSsid}
+                    onChangeText={setHsSsid}
+                    mode="outlined"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    disabled={hotspotStep === 'saving'}
+                    style={styles.input}
+                  />
+                  <TextInput
+                    label="Hotspot password"
+                    value={hsPass}
+                    onChangeText={setHsPass}
+                    mode="outlined"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    secureTextEntry={!showHsPass}
+                    disabled={hotspotStep === 'saving'}
+                    right={
+                      <TextInput.Icon
+                        icon={showHsPass ? 'eye-off' : 'eye'}
+                        onPress={() => setShowHsPass(v => !v)}
+                        forceTextInputFocus={false}
+                      />
+                    }
+                    style={styles.input}
+                  />
+                  <HelperText type="info" visible>
+                    These must exactly match your phone’s hotspot. iOS hotspot
+                    names come from your device name.
+                  </HelperText>
+                  {hotspotError ? (
+                    <HelperText type="error" visible style={styles.error}>
+                      {hotspotError}
+                    </HelperText>
+                  ) : null}
+                  <Button
+                    mode="contained"
+                    onPress={handleSaveHotspot}
+                    disabled={hotspotStep === 'saving'}
+                    loading={hotspotStep === 'saving'}
+                    style={styles.button}>
+                    {hotspotStep === 'saving'
+                      ? 'Saving…'
+                      : 'Save to converter'}
+                  </Button>
+                </View>
+              )}
+            </View>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -388,11 +618,12 @@ const styles = StyleSheet.create({
   errorTitle: {marginBottom: 8, textAlign: 'center'},
   retry: {marginTop: 20},
   content: {padding: 20},
-  heading: {marginBottom: 8},
-  intro: {marginBottom: 20, opacity: 0.8},
+  tabs: {marginBottom: 20},
+  intro: {marginBottom: 16, opacity: 0.8},
+  steps: {marginBottom: 12},
   input: {marginTop: 8},
   error: {marginTop: 4},
-  button: {marginTop: 16},
+  button: {marginTop: 12},
   statusCard: {
     marginTop: 24,
     padding: 16,

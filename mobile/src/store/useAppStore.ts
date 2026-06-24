@@ -3,6 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const SSID_KEY = 'fjocs.homeSsid';
 const PASS_KEY = 'fjocs.homePassword';
+const HOTSPOT_SSID_KEY = 'fjocs.hotspotSsid';
+const HOTSPOT_PASS_KEY = 'fjocs.hotspotPassword';
 
 /** Phases of the firmware OTA flow. */
 export type FirmwareUpdateState =
@@ -27,12 +29,16 @@ export interface LatestFirmwareReleaseInput {
 }
 
 interface AppState {
-  // --- Home WiFi credentials -------------------------------------------------
+  // --- Home WiFi / hotspot credentials --------------------------------------
   homeSsid: string;
   homePassword: string;
+  hotspotSsid: string;
+  hotspotPassword: string;
   lastStaIp: string | null;
   setHomeSsid: (ssid: string) => void;
   setHomePassword: (pass: string) => void;
+  setHotspotSsid: (ssid: string) => void;
+  setHotspotPassword: (pass: string) => void;
   setLastStaIp: (ip: string | null) => void;
   clearStoredWifi: () => Promise<void>;
   hydrate: () => Promise<void>;
@@ -80,6 +86,8 @@ interface AppState {
 export const useAppStore = create<AppState>(set => ({
   homeSsid: '',
   homePassword: '',
+  hotspotSsid: '',
+  hotspotPassword: '',
   lastStaIp: null,
   setHomeSsid: ssid => {
     set({homeSsid: ssid});
@@ -91,22 +99,42 @@ export const useAppStore = create<AppState>(set => ({
     // retype it. Not encrypted at rest — acceptable for a single-purpose tool.
     AsyncStorage.setItem(PASS_KEY, pass).catch(() => {});
   },
+  setHotspotSsid: ssid => {
+    set({hotspotSsid: ssid});
+    AsyncStorage.setItem(HOTSPOT_SSID_KEY, ssid).catch(() => {});
+  },
+  setHotspotPassword: pass => {
+    set({hotspotPassword: pass});
+    AsyncStorage.setItem(HOTSPOT_PASS_KEY, pass).catch(() => {});
+  },
   setLastStaIp: ip => set({lastStaIp: ip}),
   clearStoredWifi: async () => {
-    set({homeSsid: '', homePassword: ''});
+    set({homeSsid: '', homePassword: '', hotspotSsid: '', hotspotPassword: ''});
     try {
-      await AsyncStorage.multiRemove([SSID_KEY, PASS_KEY]);
+      await AsyncStorage.multiRemove([
+        SSID_KEY,
+        PASS_KEY,
+        HOTSPOT_SSID_KEY,
+        HOTSPOT_PASS_KEY,
+      ]);
     } catch {
       // ignore — non-fatal
     }
   },
   hydrate: async () => {
     try {
-      const [ssid, pass] = await Promise.all([
+      const [ssid, pass, hsSsid, hsPass] = await Promise.all([
         AsyncStorage.getItem(SSID_KEY),
         AsyncStorage.getItem(PASS_KEY),
+        AsyncStorage.getItem(HOTSPOT_SSID_KEY),
+        AsyncStorage.getItem(HOTSPOT_PASS_KEY),
       ]);
-      set({homeSsid: ssid ?? '', homePassword: pass ?? ''});
+      set({
+        homeSsid: ssid ?? '',
+        homePassword: pass ?? '',
+        hotspotSsid: hsSsid ?? '',
+        hotspotPassword: hsPass ?? '',
+      });
     } catch {
       // ignore — non-fatal
     }

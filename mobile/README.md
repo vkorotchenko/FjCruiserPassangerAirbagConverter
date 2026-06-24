@@ -5,11 +5,18 @@ Occupant Classification System (OCS) converter** firmware.
 
 It does two jobs:
 
-1. **Get the converter onto your WiFi.** On launch it looks for the converter —
+1. **Get the converter onto a network.** On launch it looks for the converter —
    first directly on your home network (by last-known IP or `fj-ocs.local`),
    then via the converter's own access point. If it's already configured, its
-   **web control panel** opens straight away. If not, you enter your home WiFi
-   name + password and the converter joins your network.
+   **web control panel** opens straight away. If not, the setup screen offers two
+   tabs:
+   - **Home WiFi** — enter your WiFi name + password; the converter joins it and
+     the control panel opens.
+   - **Phone hotspot** — for use where there's no WiFi. Save your phone hotspot's
+     name + password to the converter, switch the hotspot on (the converter
+     auto-joins it), then tap *Find converter*. Re-discovery over an Android
+     hotspot is best-effort (via `fj-ocs.local`) since the OS doesn't expose
+     hotspot client IPs to apps.
 2. **Keep the converter firmware up to date.** Settings shows the converter's
    firmware version and offers an over-the-air (OTA) firmware update from this
    repo's GitHub Releases.
@@ -129,11 +136,12 @@ npm test       # Jest
 
 A **Settings** screen (gear icon, top-right of both screens) holds:
 
-- **Saved home WiFi** — the SSID *and* password you entered are saved to the
-  app's private preferences (AsyncStorage) and pre-filled next time, so you
-  don't retype them. A **Clear saved WiFi** button forgets both (it does not
-  change what the converter already stored). Note: AsyncStorage is not encrypted
-  at rest — acceptable for this single-purpose tool.
+- **Saved networks** — the home WiFi and phone-hotspot names/passwords you
+  entered are saved to the app's private preferences (AsyncStorage) and
+  pre-filled next time, so you don't retype them. A **Clear saved WiFi** button
+  forgets them all (it does not change what the converter already stored). Note:
+  AsyncStorage is not encrypted at rest — acceptable for this single-purpose
+  tool.
 - **Firmware update** — the converter's firmware OTA (see below).
 - **App** — the app's own version (informational; update the app by installing a
   newer APK from GitHub Releases).

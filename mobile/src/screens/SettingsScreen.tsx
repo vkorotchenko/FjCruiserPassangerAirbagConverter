@@ -23,11 +23,15 @@ type Props = StackScreenProps<RootStackParamList, 'Settings'>;
 export default function SettingsScreen({navigation}: Props) {
   const homeSsid = useAppStore(s => s.homeSsid);
   const homePassword = useAppStore(s => s.homePassword);
+  const hotspotSsid = useAppStore(s => s.hotspotSsid);
+  const hotspotPassword = useAppStore(s => s.hotspotPassword);
   const clearStoredWifi = useAppStore(s => s.clearStoredWifi);
   const appVersion = useAppStore(s => s.appVersion);
   const appBuild = useAppStore(s => s.appBuildNumber);
 
-  const hasSaved = homeSsid.length > 0 || homePassword.length > 0;
+  const hasWifi = homeSsid.length > 0 || homePassword.length > 0;
+  const hasHotspot = hotspotSsid.length > 0 || hotspotPassword.length > 0;
+  const hasSaved = hasWifi || hasHotspot;
 
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [snackVisible, setSnackVisible] = useState(false);
@@ -52,17 +56,28 @@ export default function SettingsScreen({navigation}: Props) {
       </Appbar.Header>
 
       <ScrollView contentContainerStyle={styles.content}>
-        {/* Saved WiFi --------------------------------------------------- */}
+        {/* Saved networks ---------------------------------------------- */}
         <Surface style={styles.card} elevation={1}>
           <Text variant="titleSmall" style={styles.cardTitle}>
-            Saved home WiFi
+            Saved networks
           </Text>
           <Text variant="bodyMedium" style={styles.dim}>
             {hasSaved
-              ? `Network: ${homeSsid || '(unnamed)'}\nPassword: ${
-                  homePassword ? '••••••••' : '(none)'
-                }`
-              : 'No saved network. Your details are remembered after the first successful setup.'}
+              ? [
+                  hasWifi
+                    ? `WiFi: ${homeSsid || '(unnamed)'} / ${
+                        homePassword ? '••••••••' : '(no password)'
+                      }`
+                    : null,
+                  hasHotspot
+                    ? `Hotspot: ${hotspotSsid || '(unnamed)'} / ${
+                        hotspotPassword ? '••••••••' : '(no password)'
+                      }`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join('\n')
+              : 'Nothing saved yet. Your details are remembered after the first successful setup.'}
           </Text>
           <Button
             mode="outlined"
@@ -102,8 +117,8 @@ export default function SettingsScreen({navigation}: Props) {
           <Dialog.Title>Clear saved WiFi?</Dialog.Title>
           <Dialog.Content>
             <Text variant="bodyMedium">
-              This removes the saved network name and password from this app. It
-              does not change what the converter has already stored.
+              This removes the saved WiFi and hotspot names and passwords from
+              this app. It does not change what the converter has already stored.
             </Text>
           </Dialog.Content>
           <Dialog.Actions>

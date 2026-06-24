@@ -105,6 +105,28 @@ export function probeFirstReachable(
   });
 }
 
+/**
+ * Like probeFirstReachable, but keeps retrying for up to `totalMs` (useful while
+ * waiting for the converter to join a just-enabled hotspot and announce itself).
+ */
+export async function probeUntilReachable(
+  baseUrls: string[],
+  opts: {totalMs?: number; perTryMs?: number; intervalMs?: number} = {},
+): Promise<string | null> {
+  const total = opts.totalMs ?? 45000;
+  const per = opts.perTryMs ?? 3000;
+  const interval = opts.intervalMs ?? 2000;
+  const deadline = Date.now() + total;
+  while (Date.now() < deadline) {
+    const url = await probeFirstReachable(baseUrls, per);
+    if (url) {
+      return url;
+    }
+    await delay(interval);
+  }
+  return null;
+}
+
 /** Hand the user's home WiFi credentials to the firmware (active base URL). */
 export async function postWifi(ssid: string, pass: string): Promise<void> {
   const res = await request(activeBaseUrl, '/api/wifi', {
