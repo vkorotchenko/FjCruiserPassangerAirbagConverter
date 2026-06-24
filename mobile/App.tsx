@@ -27,8 +27,7 @@ import {
   getCachedAppVersion,
   getCachedAppBuildNumber,
 } from './src/services/appVersion';
-import {checkForMobileUpdate} from './src/services/mobileUpdateController';
-import {cleanupOldApks} from './src/services/mobileAppDownload';
+import {cleanupOldFirmware} from './src/services/firmwareDownload';
 
 function App(): React.JSX.Element {
   const isDark = useColorScheme() === 'dark';
@@ -52,8 +51,7 @@ function App(): React.JSX.Element {
     },
   };
 
-  // Read the running app's version once at boot and stash it in the store so
-  // the update UI can compare against the latest GitHub release.
+  // Read the running app's version once at boot (shown as info in Settings).
   useEffect(() => {
     initAppVersion().then(() => {
       const v = getCachedAppVersion();
@@ -64,15 +62,9 @@ function App(): React.JSX.Element {
     });
   }, []);
 
-  // Fire-and-forget self-update check on mount (1-hour TTL inside the service
-  // prevents thrashing). Errors land in the store, never bubble.
+  // Sweep any stale downloaded firmware images from prior update attempts.
   useEffect(() => {
-    checkForMobileUpdate().catch(() => {});
-  }, []);
-
-  // Sweep any stale downloaded APKs left over from prior update attempts.
-  useEffect(() => {
-    cleanupOldApks(null).catch(() => {});
+    cleanupOldFirmware(null).catch(() => {});
   }, []);
 
   return (

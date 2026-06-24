@@ -7,7 +7,7 @@ import {useFocusEffect} from '@react-navigation/native';
 import type {StackScreenProps} from '@react-navigation/stack';
 
 import type {RootStackParamList} from '../navigation/AppNavigator';
-import {FIRMWARE_BASE_URL} from '../constants';
+import {getActiveBaseUrl} from '../services/firmwareApi';
 import {releaseForcedWifi} from '../services/wifiManager';
 
 // react-native-webview ships its class typed as `WebView<P = undefined>`, which
@@ -93,7 +93,7 @@ export default function WebUiScreen({navigation}: Props) {
         ) : (
           <WebView
             ref={webRef}
-            source={{uri: FIRMWARE_BASE_URL}}
+            source={{uri: getActiveBaseUrl()}}
             onLoadStart={() => setLoading(true)}
             onLoadEnd={() => setLoading(false)}
             onNavigationStateChange={onNavStateChange}

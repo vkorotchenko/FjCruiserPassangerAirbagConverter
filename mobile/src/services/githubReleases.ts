@@ -2,31 +2,28 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {compare, parse} from './semver';
 
 // ---------------------------------------------------------------------------
-// GitHub Releases lookup for the app's own self-update.
+// GitHub Releases lookup for the converter FIRMWARE.
 //
-// Contract (.github/workflows/mobile-release.yml):
-//   - Tag shape: mobile-vMAJOR.MINOR.PATCH[-(rc|beta|alpha).N]
+// Contract (.github/workflows/firmware-release.yml):
+//   - Tag shape: firmware-vMAJOR.MINOR.PATCH[-(rc|beta|alpha).N]
 //   - Repo:      vkorotchenko/FjCruiserPassangerAirbagConverter
-//   - Assets:    fj-ocs-setup-<version>.apk
-//                fj-ocs-setup-<version>.apk.sha256
+//   - Assets:    fj-ocs-firmware-<version>.bin
+//                fj-ocs-firmware-<version>.bin.sha256
 //
 // This module only DETECTS the latest release. Download + verify live in
-// mobileAppDownload; install lives in apkInstaller.
+// firmwareDownload; flashing lives in firmwareOta.
 // ---------------------------------------------------------------------------
 
-// User-Agent is REQUIRED by the GitHub API (403 without it).
 const USER_AGENT = 'fj-ocs-setup/0.1.0';
-
 const TTL_MS = 60 * 60 * 1_000; // 1 hour
 
 const RELEASES_REPO = 'vkorotchenko/FjCruiserPassangerAirbagConverter';
-const TAG_PREFIX = 'mobile-v';
-const TAG_REGEX = /^mobile-v(\d+)\.(\d+)\.(\d+)(?:-([a-z]+)\.(\d+))?$/;
-const STORAGE_KEY = 'fjocs.gh.releases.mobile.v1';
-const APK_SUFFIX = '.apk';
-const SHA256_SUFFIX = '.apk.sha256';
+const TAG_PREFIX = 'firmware-v';
+const TAG_REGEX = /^firmware-v(\d+)\.(\d+)\.(\d+)(?:-([a-z]+)\.(\d+))?$/;
+const STORAGE_KEY = 'fjocs.gh.releases.firmware.v1';
+const BIN_SUFFIX = '.bin';
+const SHA256_SUFFIX = '.bin.sha256';
 
-// Typed errors so the UI can distinguish "GitHub unreachable" from "no release".
 export class GithubReleasesNetworkError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -40,12 +37,12 @@ export class GithubReleasesParseError extends Error {
   }
 }
 
-export interface AppReleaseInfo {
-  tag: string; // full tag including prefix, e.g. "mobile-v0.3.4"
-  version: string; // bare version, e.g. "0.3.4"
+export interface FirmwareReleaseInfo {
+  tag: string; // full tag, e.g. "firmware-v1.0.1"
+  version: string; // bare version, e.g. "1.0.1"
   htmlUrl: string;
-  apkAssetUrl: string;
-  apkAssetSize: number; // bytes
+  binAssetUrl: string;
+  binAssetSize: number; // bytes
   sha256AssetUrl: string;
   releaseNotes: string;
   publishedAt: string;
@@ -54,7 +51,7 @@ export interface AppReleaseInfo {
 
 interface CachedEntry {
   fetchedAt: number;
-  release: AppReleaseInfo | null; // null = "no eligible release exists"
+  release: FirmwareReleaseInfo | null;
   etag: string | null;
 }
 
@@ -116,7 +113,7 @@ function pickLatestRelease(
     }
     const m = TAG_REGEX.exec(r.tag_name);
     if (!m || m[4]) {
-      continue; // no match, or tag-encoded prerelease suffix
+      continue;
     }
     const version = r.tag_name.slice(TAG_PREFIX.length);
     if (!parse(version)) {
@@ -135,23 +132,21 @@ function pickLatestRelease(
 function buildReleaseInfo(
   picked: {release: GithubRelease; tag: string; version: string},
   etag: string | null,
-): AppReleaseInfo | null {
+): FirmwareReleaseInfo | null {
   const {release, tag, version} = picked;
-  // The sha256 sidecar also ends in ".apk.sha256"; exclude it when matching
-  // the primary APK.
   const secondary = release.assets.find(a => a.name.endsWith(SHA256_SUFFIX));
   const primary = release.assets.find(
-    a => a.name.endsWith(APK_SUFFIX) && !a.name.endsWith(SHA256_SUFFIX),
+    a => a.name.endsWith(BIN_SUFFIX) && !a.name.endsWith(SHA256_SUFFIX),
   );
   if (!primary || !secondary) {
-    return null; // release exists but is missing required assets
+    return null; // release exists but missing required assets
   }
   return {
     tag,
     version,
     htmlUrl: release.html_url,
-    apkAssetUrl: primary.browser_download_url,
-    apkAssetSize: primary.size,
+    binAssetUrl: primary.browser_download_url,
+    binAssetSize: primary.size,
     sha256AssetUrl: secondary.browser_download_url,
     releaseNotes: release.body ?? '',
     publishedAt: release.published_at,
@@ -160,14 +155,13 @@ function buildReleaseInfo(
 }
 
 /**
- * Fetch the newest non-prerelease `mobile-v*` release. Honors a 1-hour TTL
+ * Fetch the newest non-prerelease `firmware-v*` release. Honors a 1-hour TTL
  * cache, sends `If-None-Match`, returns null when no eligible release exists,
- * and throws typed errors for transport / parse failures. Errors never clear
- * cached state.
+ * and throws typed errors for transport / parse failures.
  */
-export async function fetchLatestMobileRelease(
+export async function fetchLatestFirmwareRelease(
   opts: {force?: boolean} = {},
-): Promise<AppReleaseInfo | null> {
+): Promise<FirmwareReleaseInfo | null> {
   const cached = await loadCache();
   const now = Date.now();
 

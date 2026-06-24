@@ -4,74 +4,77 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const SSID_KEY = 'fjocs.homeSsid';
 const PASS_KEY = 'fjocs.homePassword';
 
-/** Phases of the in-app self-update flow. */
-export type AppUpdateState =
+/** Phases of the firmware OTA flow. */
+export type FirmwareUpdateState =
   | 'idle'
   | 'checking'
   | 'downloading'
   | 'verifying'
-  | 'ready'
+  | 'flashing'
+  | 'rebooting'
+  | 'done'
   | 'error';
 
-/** Minimal release info pushed into the store by the update controller. */
-export interface LatestAppReleaseInput {
+/** Minimal firmware-release info pushed into the store by the controller. */
+export interface LatestFirmwareReleaseInput {
   tag: string;
   version: string;
   htmlUrl: string;
-  apkAssetUrl: string;
-  apkAssetSize: number;
+  binAssetUrl: string;
+  binAssetSize: number;
   sha256AssetUrl: string;
   etag: string | null;
 }
 
 interface AppState {
-  /** Last home-WiFi SSID the user entered (remembered across launches). */
+  // --- Home WiFi credentials -------------------------------------------------
   homeSsid: string;
-  /** Last home-WiFi password the user entered (remembered across launches). */
   homePassword: string;
-  /** Last station IP the firmware reported after joining home WiFi. */
   lastStaIp: string | null;
   setHomeSsid: (ssid: string) => void;
   setHomePassword: (pass: string) => void;
   setLastStaIp: (ip: string | null) => void;
-  /** Forget the saved home-WiFi SSID + password (preferences + state). */
   clearStoredWifi: () => Promise<void>;
-  /** Load persisted values from disk (call once at startup). */
   hydrate: () => Promise<void>;
 
-  // --- App self-update (OTA) -------------------------------------------------
-  appVersion: string | null; // running versionName, e.g. "0.1.0"
-  appBuildNumber: string | null; // running versionCode, e.g. "100"
+  // --- App identity (informational only) -------------------------------------
+  appVersion: string | null;
+  appBuildNumber: string | null;
   setAppVersion: (version: string, build: string) => void;
 
-  latestAppReleaseTag: string | null;
-  latestAppReleaseVersion: string | null;
-  latestAppReleaseUrl: string | null;
-  latestAppReleaseAssetUrl: string | null;
-  latestAppReleaseSha256Url: string | null;
-  latestAppReleaseSize: number | null;
-  latestAppReleaseCheckedAt: number | null;
-  latestAppReleaseEtag: string | null;
+  // --- Firmware OTA ----------------------------------------------------------
+  /** Current firmware version reported by the converter (GET /api/info). */
+  firmwareVersion: string | null;
+  setFirmwareVersion: (v: string | null) => void;
 
-  appUpdateState: AppUpdateState;
-  appUpdateError: string | null;
-  appUpdateProgress: number; // 0..1
-  appUpdateBytesReceived: number | null;
-  appUpdateBytesTotal: number | null;
+  latestFwTag: string | null;
+  latestFwVersion: string | null;
+  latestFwUrl: string | null;
+  latestFwBinUrl: string | null;
+  latestFwSha256Url: string | null;
+  latestFwSize: number | null;
+  latestFwCheckedAt: number | null;
+  latestFwEtag: string | null;
 
-  setLatestAppRelease: (
-    info: LatestAppReleaseInput | null,
+  firmwareUpdateState: FirmwareUpdateState;
+  firmwareUpdateError: string | null;
+  firmwareUpdateProgress: number; // 0..1
+  firmwareUpdateBytesDone: number | null;
+  firmwareUpdateBytesTotal: number | null;
+
+  setLatestFirmwareRelease: (
+    info: LatestFirmwareReleaseInput | null,
     checkedAt: number,
   ) => void;
-  touchLatestAppReleaseCheckedAt: (checkedAt: number) => void;
-  setAppUpdateState: (s: AppUpdateState) => void;
-  setAppUpdateError: (e: string | null) => void;
-  setAppUpdateProgress: (
+  touchLatestFwCheckedAt: (checkedAt: number) => void;
+  setFirmwareUpdateState: (s: FirmwareUpdateState) => void;
+  setFirmwareUpdateError: (e: string | null) => void;
+  setFirmwareUpdateProgress: (
     frac: number,
-    received?: number | null,
+    done?: number | null,
     total?: number | null,
   ) => void;
-  resetAppUpdateProgress: () => void;
+  resetFirmwareUpdateProgress: () => void;
 }
 
 export const useAppStore = create<AppState>(set => ({
@@ -109,65 +112,66 @@ export const useAppStore = create<AppState>(set => ({
     }
   },
 
-  // --- App self-update (OTA) -------------------------------------------------
   appVersion: null,
   appBuildNumber: null,
   setAppVersion: (version, build) =>
     set({appVersion: version, appBuildNumber: build}),
 
-  latestAppReleaseTag: null,
-  latestAppReleaseVersion: null,
-  latestAppReleaseUrl: null,
-  latestAppReleaseAssetUrl: null,
-  latestAppReleaseSha256Url: null,
-  latestAppReleaseSize: null,
-  latestAppReleaseCheckedAt: null,
-  latestAppReleaseEtag: null,
+  firmwareVersion: null,
+  setFirmwareVersion: v => set({firmwareVersion: v}),
 
-  appUpdateState: 'idle',
-  appUpdateError: null,
-  appUpdateProgress: 0,
-  appUpdateBytesReceived: null,
-  appUpdateBytesTotal: null,
+  latestFwTag: null,
+  latestFwVersion: null,
+  latestFwUrl: null,
+  latestFwBinUrl: null,
+  latestFwSha256Url: null,
+  latestFwSize: null,
+  latestFwCheckedAt: null,
+  latestFwEtag: null,
 
-  setLatestAppRelease: (info, checkedAt) =>
+  firmwareUpdateState: 'idle',
+  firmwareUpdateError: null,
+  firmwareUpdateProgress: 0,
+  firmwareUpdateBytesDone: null,
+  firmwareUpdateBytesTotal: null,
+
+  setLatestFirmwareRelease: (info, checkedAt) =>
     set(
       info
         ? {
-            latestAppReleaseTag: info.tag,
-            latestAppReleaseVersion: info.version,
-            latestAppReleaseUrl: info.htmlUrl,
-            latestAppReleaseAssetUrl: info.apkAssetUrl,
-            latestAppReleaseSha256Url: info.sha256AssetUrl,
-            latestAppReleaseSize: info.apkAssetSize,
-            latestAppReleaseCheckedAt: checkedAt,
-            latestAppReleaseEtag: info.etag,
+            latestFwTag: info.tag,
+            latestFwVersion: info.version,
+            latestFwUrl: info.htmlUrl,
+            latestFwBinUrl: info.binAssetUrl,
+            latestFwSha256Url: info.sha256AssetUrl,
+            latestFwSize: info.binAssetSize,
+            latestFwCheckedAt: checkedAt,
+            latestFwEtag: info.etag,
           }
         : {
-            latestAppReleaseTag: null,
-            latestAppReleaseVersion: null,
-            latestAppReleaseUrl: null,
-            latestAppReleaseAssetUrl: null,
-            latestAppReleaseSha256Url: null,
-            latestAppReleaseSize: null,
-            latestAppReleaseCheckedAt: checkedAt,
-            latestAppReleaseEtag: null,
+            latestFwTag: null,
+            latestFwVersion: null,
+            latestFwUrl: null,
+            latestFwBinUrl: null,
+            latestFwSha256Url: null,
+            latestFwSize: null,
+            latestFwCheckedAt: checkedAt,
+            latestFwEtag: null,
           },
     ),
-  touchLatestAppReleaseCheckedAt: checkedAt =>
-    set({latestAppReleaseCheckedAt: checkedAt}),
-  setAppUpdateState: s => set({appUpdateState: s}),
-  setAppUpdateError: e => set({appUpdateError: e}),
-  setAppUpdateProgress: (frac, received = null, total = null) =>
+  touchLatestFwCheckedAt: checkedAt => set({latestFwCheckedAt: checkedAt}),
+  setFirmwareUpdateState: s => set({firmwareUpdateState: s}),
+  setFirmwareUpdateError: e => set({firmwareUpdateError: e}),
+  setFirmwareUpdateProgress: (frac, done = null, total = null) =>
     set({
-      appUpdateProgress: Math.max(0, Math.min(1, frac)),
-      appUpdateBytesReceived: received,
-      appUpdateBytesTotal: total,
+      firmwareUpdateProgress: Math.max(0, Math.min(1, frac)),
+      firmwareUpdateBytesDone: done,
+      firmwareUpdateBytesTotal: total,
     }),
-  resetAppUpdateProgress: () =>
+  resetFirmwareUpdateProgress: () =>
     set({
-      appUpdateProgress: 0,
-      appUpdateBytesReceived: null,
-      appUpdateBytesTotal: null,
+      firmwareUpdateProgress: 0,
+      firmwareUpdateBytesDone: null,
+      firmwareUpdateBytesTotal: null,
     }),
 }));

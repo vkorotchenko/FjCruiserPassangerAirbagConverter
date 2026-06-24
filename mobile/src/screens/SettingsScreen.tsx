@@ -14,9 +14,9 @@ import type {StackScreenProps} from '@react-navigation/stack';
 
 import type {RootStackParamList} from '../navigation/AppNavigator';
 import {useAppStore} from '../store/useAppStore';
-import {getInfo} from '../services/firmwareApi';
 import {formatVersion} from '../services/semver';
-import AppUpdateSection from '../components/AppUpdateSection';
+import {checkForFirmwareUpdate} from '../services/firmwareUpdateController';
+import FirmwareUpdateSection from '../components/FirmwareUpdateSection';
 
 type Props = StackScreenProps<RootStackParamList, 'Settings'>;
 
@@ -24,31 +24,18 @@ export default function SettingsScreen({navigation}: Props) {
   const homeSsid = useAppStore(s => s.homeSsid);
   const homePassword = useAppStore(s => s.homePassword);
   const clearStoredWifi = useAppStore(s => s.clearStoredWifi);
+  const appVersion = useAppStore(s => s.appVersion);
+  const appBuild = useAppStore(s => s.appBuildNumber);
 
   const hasSaved = homeSsid.length > 0 || homePassword.length > 0;
 
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [snackVisible, setSnackVisible] = useState(false);
-  const [fwVersion, setFwVersion] = useState<string | null>(null);
 
-  // Best-effort firmware version. Only resolves when the phone can currently
-  // reach the converter (on its AP); otherwise stays null ("not connected").
+  // Populate the converter's firmware version + latest release on entry
+  // (best-effort; only reads the converter if it is reachable).
   useEffect(() => {
-    let cancelled = false;
-    getInfo(4000)
-      .then(info => {
-        if (!cancelled) {
-          setFwVersion(info.fwVersion ?? null);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setFwVersion(null);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
+    checkForFirmwareUpdate().catch(() => {});
   }, []);
 
   const onClear = useCallback(async () => {
@@ -87,25 +74,24 @@ export default function SettingsScreen({navigation}: Props) {
           </Button>
         </Surface>
 
-        {/* Firmware ----------------------------------------------------- */}
+        {/* Firmware update (OTA) --------------------------------------- */}
         <Surface style={styles.card} elevation={1}>
           <Text variant="titleSmall" style={styles.cardTitle}>
-            Converter firmware
-          </Text>
-          <Text variant="bodyMedium" style={styles.dim}>
-            {fwVersion
-              ? `Version ${formatVersion(fwVersion)}`
-              : 'Not connected to the converter. Connect to see its firmware version.'}
-          </Text>
-        </Surface>
-
-        {/* App update (OTA) -------------------------------------------- */}
-        <Surface style={styles.card} elevation={1}>
-          <Text variant="titleSmall" style={styles.cardTitle}>
-            App update
+            Firmware update
           </Text>
           <Divider style={styles.divider} />
-          <AppUpdateSection embedded />
+          <FirmwareUpdateSection embedded />
+        </Surface>
+
+        {/* App identity ------------------------------------------------ */}
+        <Surface style={styles.card} elevation={1}>
+          <Text variant="titleSmall" style={styles.cardTitle}>
+            App
+          </Text>
+          <Text variant="bodyMedium" style={styles.dim}>
+            Version {formatVersion(appVersion)}
+            {appBuild ? ` (build ${appBuild})` : ''}
+          </Text>
         </Surface>
       </ScrollView>
 
@@ -140,11 +126,7 @@ export default function SettingsScreen({navigation}: Props) {
 const styles = StyleSheet.create({
   flex: {flex: 1},
   content: {padding: 16},
-  card: {
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-  },
+  card: {padding: 16, borderRadius: 12, marginBottom: 16},
   cardTitle: {marginBottom: 8},
   dim: {opacity: 0.75},
   action: {marginTop: 16, alignSelf: 'flex-start'},

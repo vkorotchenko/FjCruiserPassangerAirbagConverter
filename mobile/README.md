@@ -3,40 +3,44 @@
 A small React Native companion app for the **FJ Cruiser Passenger Airbag /
 Occupant Classification System (OCS) converter** firmware.
 
-It does one job, simply:
+It does two jobs:
 
-1. You enter your **home WiFi name and password** (the network name is
-   pre-filled from your phone's current connection where possible).
-2. The app joins the converter's own WiFi access point and hands it those
-   credentials so the converter joins your home network.
-3. The app then opens the converter's existing **web control panel** in an
-   embedded view.
+1. **Get the converter onto your WiFi.** On launch it looks for the converter —
+   first directly on your home network (by last-known IP or `fj-ocs.local`),
+   then via the converter's own access point. If it's already configured, its
+   **web control panel** opens straight away. If not, you enter your home WiFi
+   name + password and the converter joins your network.
+2. **Keep the converter firmware up to date.** Settings shows the converter's
+   firmware version and offers an over-the-air (OTA) firmware update from this
+   repo's GitHub Releases.
 
-The converter firmware is unchanged — this app talks to its existing
-`POST /api/wifi` and `GET /api/info` endpoints and then embeds the web UI it
-already serves at `http://192.168.4.1`.
+The app talks to the firmware's `GET /api/info`, `POST /api/wifi`, and
+`POST /api/ota` endpoints, and embeds the web UI the firmware serves.
 
 ## How it works
 
 ```
 Phone (this app)
-   │  1. read current SSID (prefill)
-   │  2. join AP  "FJ-OCS-Config"  (WPA2, pass "fjcruiser")
+   │  on launch: probe 192.168.4.1 (AP), last home IP, fj-ocs.local
    ▼
-ESP32 SoftAP  192.168.4.1
-   │  3. POST /api/wifi {ssid, pass}   → firmware calls WiFi.begin()
-   │  4. poll GET /api/info until staOk → firmware joined home WiFi
-   ▼
-WebView → http://192.168.4.1/   (the converter's control panel)
+   ├── reachable + staOk ──────────────► WebView → control panel  (direct)
+   │
+   └── not reachable → join AP "FJ-OCS-Config" (WPA2 "fjcruiser")
+          │  POST /api/wifi {ssid, pass} → firmware WiFi.begin()
+          │  poll GET /api/info until staOk → confirms it joined your network
+          ▼
+        WebView → converter control panel
 ```
 
 The ESP32 runs its access point **and** a station connection at the same time
-(`WIFI_AP_STA`), so `192.168.4.1` stays reachable over its own AP even after it
-joins your home network — the app never has to switch networks to show the UI.
+(`WIFI_AP_STA`), so the AP is an always-available fallback for (re)configuring
+and reading the firmware version, while `fj-ocs.local` / its DHCP IP reach it on
+the home network. Firmware OTA images are uploaded to `POST /api/ota`.
 
-These values mirror the firmware's `src/config.h`
-(`WIFI_AP_SSID` / `WIFI_AP_PASS`) and live in [`src/constants.ts`](src/constants.ts).
-If you change them in the firmware, change them here too.
+These values mirror the firmware's `src/config.h` (`WIFI_AP_SSID` /
+`WIFI_AP_PASS` / `WIFI_HOSTNAME`) and live in
+[`src/constants.ts`](src/constants.ts). If you change them in the firmware,
+change them here too.
 
 ## Tech stack
 
@@ -50,6 +54,7 @@ If you change them in the firmware, change them here too.
 | zustand | 5.x (state) |
 | react-native-webview | 14.x (embedded control panel) |
 | react-native-wifi-reborn | 4.x (read SSID + join AP) |
+| react-native-blob-util + js-sha256 | firmware .bin download + verify |
 
 ## Project structure
 
@@ -58,19 +63,25 @@ mobile/
 ├── App.tsx                      # Providers + navigation root
 ├── index.js                     # Entry (registers gesture-handler)
 ├── src/
-│   ├── constants.ts             # AP SSID/pass + firmware base URL
+│   ├── constants.ts             # AP SSID/pass + AP/mDNS URLs
 │   ├── navigation/
-│   │   └── AppNavigator.tsx      # Stack: Setup -> WebUi
+│   │   └── AppNavigator.tsx      # Stack: Setup -> WebUi -> Settings
 │   ├── screens/
-│   │   ├── WifiSetupScreen.tsx   # Landing: SSID/password + connect flow
+│   │   ├── WifiSetupScreen.tsx   # Auto-connect / WiFi setup form
 │   │   ├── WebUiScreen.tsx       # Embedded firmware web UI (WebView)
-│   │   └── SettingsScreen.tsx    # Saved WiFi, firmware version, app update
+│   │   └── SettingsScreen.tsx    # Saved WiFi, firmware OTA, app version
+│   ├── components/
+│   │   └── FirmwareUpdateSection.tsx  # Firmware OTA UI
 │   ├── services/
 │   │   ├── permissions.ts        # Android runtime WiFi/location permissions
 │   │   ├── wifiManager.ts        # Read SSID, join AP, bind app to WiFi
-│   │   └── firmwareApi.ts        # GET /api/info, POST /api/wifi, poll staOk
+│   │   ├── firmwareApi.ts        # /api/info, /api/wifi, probe, active base URL
+│   │   ├── githubReleases.ts     # latest firmware-v* release lookup
+│   │   ├── firmwareDownload.ts   # download + SHA256-verify the .bin
+│   │   ├── firmwareOta.ts        # upload .bin to /api/ota, await reboot
+│   │   └── firmwareUpdateController.ts  # OTA orchestration
 │   └── store/
-│       └── useAppStore.ts        # zustand store (remembers last SSID)
+│       └── useAppStore.ts        # zustand store (WiFi creds, firmware OTA)
 ├── android/                      # Native Android project
 └── ios/                          # Native iOS project (best-effort)
 ```
@@ -123,43 +134,54 @@ A **Settings** screen (gear icon, top-right of both screens) holds:
   don't retype them. A **Clear saved WiFi** button forgets both (it does not
   change what the converter already stored). Note: AsyncStorage is not encrypted
   at rest — acceptable for this single-purpose tool.
-- **Converter firmware** — the firmware version, read from `GET /api/info`
-  (`fwVersion`) when the converter is reachable.
-- **App update** — the in-app updater (see below).
+- **Firmware update** — the converter's firmware OTA (see below).
+- **App** — the app's own version (informational; update the app by installing a
+  newer APK from GitHub Releases).
 
-## In-app updates (OTA)
+## Firmware updates (OTA)
 
-The app can update **itself** (not the converter firmware), mirroring the
-`pao_console_dial` updater:
+The app updates the **converter firmware** over WiFi:
 
-- On launch it checks this repo's **GitHub Releases** (1-hour cached) for a newer
-  `mobile-v*` release.
-- The **Settings** screen shows the running version and an **Update / Check**
-  button. When a newer release exists, it downloads the APK to cache, verifies
-  its **SHA256**, then hands it to the Android package installer.
-- **Android only** — iOS can't sideload APKs, so on iOS the updater just opens
-  the GitHub release page. The first install prompts for the "install unknown
-  apps" permission.
+- It reads the converter's current version from `GET /api/info` (`fwVersion`) and
+  checks this repo's **GitHub Releases** (1-hour cached) for a newer
+  `firmware-v*` release.
+- When a newer version exists, **Check → Flash** downloads the `.bin`, verifies
+  its **SHA256**, then uploads it to the converter's `POST /api/ota`. The
+  converter writes it to its inactive OTA partition and reboots into the new
+  firmware (rollback-safe — a bad/interrupted image leaves the old one running).
+- Flashing needs **both** internet (to download the `.bin`) and a reachable
+  converter (to upload). This works best when the converter is already on your
+  home network and the phone has internet on the same network.
+
+> ⚠️ Don't power off the converter or close the app while it's flashing.
 
 Key files: `src/services/githubReleases.ts` (release lookup),
-`src/services/mobileAppDownload.ts` (streamed download + verify),
-`src/services/apkInstaller.ts` + `android/.../ApkInstallerModule.kt` (install),
-`src/services/mobileUpdateController.ts` (orchestration),
-`src/components/AppUpdateSection.tsx` (UI), `src/screens/SettingsScreen.tsx`.
+`src/services/firmwareDownload.ts` (download + SHA256 verify),
+`src/services/firmwareOta.ts` (upload to `/api/ota` + await reboot),
+`src/services/firmwareUpdateController.ts` (orchestration),
+`src/components/FirmwareUpdateSection.tsx` (UI). Firmware endpoint:
+`src/WebInterface.cpp` (`POST /api/ota`).
 
-### Cutting a release
+### Cutting a firmware release
 
-From the repo root, bump + tag + push (CI does the rest):
+From the repo root, bump + tag + push (CI builds and publishes):
 
 ```bash
-make release-mobile-patch   # or -minor / -major
+make release-firmware-patch   # or -minor / -major
 ```
 
-Pushing a `mobile-v*` tag triggers `.github/workflows/mobile-release.yml`, which
-builds a signed APK, writes a SHA256 sidecar, and publishes a GitHub Release with
-`fj-ocs-setup-<version>.apk` + `.apk.sha256`. The APK is signed with the committed
-debug keystore so every build shares one signature (required for sideloaded OTA
-updates to install over the top) — it is **not** Play Store eligible.
+Pushing a `firmware-v*` tag triggers `.github/workflows/firmware-release.yml`,
+which stamps the version into `config.h`, builds the firmware, and publishes a
+GitHub Release with `fj-ocs-firmware-<version>.bin` + `.bin.sha256` — exactly
+what the in-app updater downloads.
+
+### Distributing the app itself
+
+The app is distributed as a sideloaded APK (it does **not** self-update):
+
+```bash
+make release-mobile-patch   # tags mobile-v* -> builds + publishes the APK
+```
 
 ## Platform notes
 
@@ -167,18 +189,19 @@ This app is **Android-first**. Reading the current WiFi SSID and joining the
 converter's AP work out of the box on Android with the location / nearby-WiFi
 permissions the app requests at launch.
 
-- **Auto-join with manual fallback:** the app tries to join `FJ-OCS-Config`
-  programmatically. If that fails (some OEMs restrict it), it shows a short
-  guided dialog to join from system WiFi settings, then continues automatically.
-- **Cleartext HTTP:** the firmware serves plain `http://` + `ws://` on its AP.
-  Android allows this only for `192.168.4.1` / `fj-ocs` via
-  `android/app/src/main/res/xml/network_security_config.xml`; iOS allows it via
-  `NSAllowsLocalNetworking`.
+- **Auto-connect:** on launch the app probes for the converter (home network or
+  AP) and connects automatically; if it must join the AP and that fails, it
+  shows an inline error with a Retry button.
+- **Cleartext HTTP:** the converter serves plain `http://`/`ws://` and accepts
+  OTA over HTTP, on an arbitrary home-network IP. Android permits cleartext
+  generally via `android/app/src/main/res/xml/network_security_config.xml` (only
+  local-converter traffic is cleartext; GitHub downloads are HTTPS); iOS allows
+  it via `NSAllowsLocalNetworking`.
 - **iOS (best-effort):** the project builds, but automatic SSID pre-fill and
   programmatic AP join require Apple's *Access WiFi Information* and *Hotspot
   Configuration* entitlements (a paid Apple Developer account + provisioning
   changes). Without them the app degrades gracefully: enter the SSID by hand and
-  use the guided manual-join flow.
+  join `FJ-OCS-Config` from iOS WiFi settings before retrying.
 
 ## Troubleshooting
 

@@ -1,10 +1,9 @@
-import React, {useEffect, useState, useCallback} from 'react';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {
   ScrollView,
   StyleSheet,
   View,
   Platform,
-  Linking,
   KeyboardAvoidingView,
 } from 'react-native';
 import {
@@ -14,8 +13,6 @@ import {
   Button,
   HelperText,
   ActivityIndicator,
-  Portal,
-  Dialog,
   Surface,
 } from 'react-native-paper';
 import type {StackScreenProps} from '@react-navigation/stack';
@@ -28,182 +25,189 @@ import {
   connectToFirmwareAp,
   bindToWifi,
 } from '../services/wifiManager';
-import {postWifi, waitForStation, pingFirmware} from '../services/firmwareApi';
-import {FIRMWARE_AP_SSID, FIRMWARE_AP_PASS} from '../constants';
+import {
+  setActiveBaseUrl,
+  getInfoAt,
+  postWifi,
+  waitForStation,
+  probeFirstReachable,
+} from '../services/firmwareApi';
+import {
+  FIRMWARE_AP_SSID,
+  FIRMWARE_AP_URL,
+  FIRMWARE_MDNS_URL,
+} from '../constants';
 
 type Props = StackScreenProps<RootStackParamList, 'Setup'>;
 
-type Phase = 'idle' | 'joining' | 'sending' | 'waiting' | 'error';
-
-const UNREACHABLE = 'unreachable';
-
-function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
+type Phase = 'probing' | 'joining-ap' | 'need-setup' | 'submitting' | 'error';
 
 function messageOf(err: unknown): string {
-  if (err instanceof Error) {
-    return err.message;
-  }
-  return String(err);
+  return err instanceof Error ? err.message : String(err);
 }
 
 export default function WifiSetupScreen({navigation}: Props) {
-  const setHomeSsid = useAppStore(state => state.setHomeSsid);
-  const setHomePassword = useAppStore(state => state.setHomePassword);
-  const setLastStaIp = useAppStore(state => state.setLastStaIp);
-  const hydrate = useAppStore(state => state.hydrate);
+  const setHomeSsid = useAppStore(s => s.setHomeSsid);
+  const setHomePassword = useAppStore(s => s.setHomePassword);
+  const setLastStaIp = useAppStore(s => s.setLastStaIp);
+  const setFirmwareVersion = useAppStore(s => s.setFirmwareVersion);
+  const hydrate = useAppStore(s => s.hydrate);
+
+  const [phase, setPhase] = useState<Phase>('probing');
+  const [status, setStatus] = useState('Looking for the converter…');
+  const [error, setError] = useState<string | null>(null);
 
   const [ssid, setSsid] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
-  const [phase, setPhase] = useState<Phase>('idle');
-  const [status, setStatus] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const startedRef = useRef(false);
 
-  const [manualVisible, setManualVisible] = useState(false);
-  const [manualBusy, setManualBusy] = useState(false);
-  const [manualError, setManualError] = useState<string | null>(null);
+  const goConnected = useCallback(
+    (staIp?: string) => {
+      navigation.replace('WebUi', staIp ? {staIp} : undefined);
+    },
+    [navigation],
+  );
 
-  const busy = phase === 'joining' || phase === 'sending' || phase === 'waiting';
+  // Find the converter (direct on the home network, or via its AP), decide
+  // whether it is already configured, and route accordingly.
+  const bootstrap = useCallback(async () => {
+    setError(null);
+    setFormError(null);
+    setPhase('probing');
+    setStatus('Looking for the converter…');
 
-  // On mount: load any saved SSID/password, ask for permissions, and try to
-  // pre-fill the SSID with the phone's current network (skipping the firmware's
-  // own AP). A freshly-detected home SSID wins over the saved one.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      await hydrate();
-      const {homeSsid: savedSsid, homePassword: savedPass} =
-        useAppStore.getState();
-      if (!cancelled) {
-        if (savedSsid) {
-          setSsid(savedSsid);
-        }
-        if (savedPass) {
-          setPassword(savedPass);
-        }
+    await hydrate();
+    const granted = await requestWifiPermissions();
+
+    // Capture the phone's current network *before* we might join the AP, so we
+    // can pre-fill the home SSID on a fresh setup.
+    let detectedHomeSsid: string | null = null;
+    if (granted) {
+      const cur = await getCurrentSsid();
+      if (cur && cur !== FIRMWARE_AP_SSID) {
+        detectedHomeSsid = cur;
       }
-      const granted = await requestWifiPermissions();
-      const current = granted ? await getCurrentSsid() : null;
-      if (!cancelled && current && current !== FIRMWARE_AP_SSID) {
-        setSsid(current);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [hydrate]);
+    }
 
-  // Poll until the firmware AP answers, or give up so the caller can offer a
-  // manual-join fallback.
-  const ensureReachable = useCallback(async () => {
-    for (let attempt = 0; attempt < 6; attempt++) {
-      if (await pingFirmware()) {
+    // Probe known addresses in parallel: the always-on AP, the last home IP,
+    // and the mDNS name.
+    const {lastStaIp} = useAppStore.getState();
+    const candidates = [FIRMWARE_AP_URL];
+    if (lastStaIp) {
+      candidates.push(`http://${lastStaIp}`);
+    }
+    candidates.push(FIRMWARE_MDNS_URL);
+
+    let baseUrl = await probeFirstReachable(candidates, 3000);
+
+    // Not reachable anywhere → join the AP to (re)configure.
+    if (!baseUrl) {
+      setPhase('joining-ap');
+      setStatus(`Joining the converter’s WiFi (${FIRMWARE_AP_SSID})…`);
+      try {
+        await connectToFirmwareAp();
+        await bindToWifi();
+      } catch {
+        setPhase('error');
+        setError(
+          `Couldn’t join “${FIRMWARE_AP_SSID}”. Make sure the converter is powered and in range, then retry.`,
+        );
         return;
       }
-      await delay(1500);
+      baseUrl = await probeFirstReachable([FIRMWARE_AP_URL], 8000);
+      if (!baseUrl) {
+        setPhase('error');
+        setError(
+          'Joined the converter’s WiFi but couldn’t reach it. Power-cycle the converter and retry.',
+        );
+        return;
+      }
     }
-    throw new Error(UNREACHABLE);
-  }, []);
 
-  // Shared continuation once the phone is (believed to be) on the firmware AP:
-  // confirm reachability, push credentials, then wait for the station join.
-  const continueAfterAp = useCallback(
-    async (targetSsid: string, targetPass: string) => {
-      await bindToWifi();
-      setStatus('Reaching the converter…');
-      await ensureReachable();
+    setActiveBaseUrl(baseUrl);
 
-      setPhase('sending');
-      setStatus('Sending your WiFi details to the converter…');
-      await postWifi(targetSsid, targetPass);
+    let info;
+    try {
+      info = await getInfoAt(baseUrl, 5000);
+    } catch (e) {
+      setPhase('error');
+      setError(messageOf(e));
+      return;
+    }
+    setFirmwareVersion(info.fwVersion ?? null);
 
-      setPhase('waiting');
-      setStatus(`Waiting for the converter to join “${targetSsid}”…`);
-      const info = await waitForStation({
-        onTick: tick => {
-          if (tick && !tick.staOk) {
-            setStatus(`Converter online, joining “${targetSsid}”…`);
-          }
-        },
-      });
-
+    // Already on the home network → straight to the control panel.
+    if (info.staOk && info.staIp && info.staIp !== '0.0.0.0') {
       setLastStaIp(info.staIp);
-      navigation.replace('WebUi', {staIp: info.staIp});
-    },
-    [ensureReachable, navigation, setLastStaIp],
-  );
+      goConnected(info.staIp);
+      return;
+    }
+
+    // Needs configuring → show the form (pre-filled).
+    const {homeSsid, homePassword} = useAppStore.getState();
+    setSsid(detectedHomeSsid || homeSsid || '');
+    setPassword(homePassword || '');
+    setPhase('need-setup');
+  }, [hydrate, goConnected, setFirmwareVersion, setLastStaIp]);
+
+  useEffect(() => {
+    if (startedRef.current) {
+      return;
+    }
+    startedRef.current = true;
+    bootstrap();
+  }, [bootstrap]);
 
   const handleConnect = useCallback(async () => {
     const trimmed = ssid.trim();
     if (!trimmed) {
-      setError('Enter your home WiFi name (SSID).');
+      setFormError('Enter your home WiFi name (SSID).');
       return;
     }
-    setError(null);
-    setManualError(null);
+    setFormError(null);
     setHomeSsid(trimmed);
     setHomePassword(password);
 
-    setPhase('joining');
-    setStatus(`Joining the converter’s WiFi (${FIRMWARE_AP_SSID})…`);
+    setPhase('submitting');
+    setStatus('Sending your WiFi details to the converter…');
     try {
-      await connectToFirmwareAp();
-    } catch {
-      // Programmatic join failed (common on some OEMs / iOS): fall back to the
-      // guided manual join.
-      setPhase('idle');
-      setStatus('');
-      setManualVisible(true);
+      await postWifi(trimmed, password);
+    } catch (e) {
+      setPhase('need-setup');
+      setFormError(messageOf(e));
       return;
     }
 
+    setStatus(`Waiting for the converter to join “${trimmed}”…`);
     try {
-      await continueAfterAp(trimmed, password);
-    } catch (err) {
-      if (messageOf(err) === UNREACHABLE) {
-        setPhase('idle');
-        setStatus('');
-        setManualVisible(true);
-      } else {
-        setPhase('error');
-        setError(messageOf(err));
-      }
-    }
-  }, [ssid, password, setHomeSsid, setHomePassword, continueAfterAp]);
-
-  const handleManualContinue = useCallback(async () => {
-    setManualBusy(true);
-    setManualError(null);
-    try {
-      await continueAfterAp(ssid.trim(), password);
-      setManualVisible(false);
-    } catch (err) {
-      if (messageOf(err) === UNREACHABLE) {
-        setManualError(
-          `Still can’t reach the converter. Make sure you joined “${FIRMWARE_AP_SSID}”, then try again.`,
-        );
-      } else {
-        setManualVisible(false);
-        setPhase('error');
-        setError(messageOf(err));
-      }
-    } finally {
-      setManualBusy(false);
-    }
-  }, [continueAfterAp, ssid, password]);
-
-  const openWifiSettings = useCallback(() => {
-    if (Platform.OS === 'android') {
-      Linking.sendIntent('android.settings.WIFI_SETTINGS').catch(() => {
-        Linking.openSettings().catch(() => {});
+      const info = await waitForStation({
+        onTick: tick => {
+          if (tick && !tick.staOk) {
+            setStatus(`Converter online, joining “${trimmed}”…`);
+          }
+        },
       });
-    } else {
-      Linking.openSettings().catch(() => {});
+      setFirmwareVersion(info.fwVersion ?? null);
+      setLastStaIp(info.staIp);
+      goConnected(info.staIp);
+    } catch (e) {
+      setPhase('need-setup');
+      setFormError(messageOf(e));
     }
-  }, []);
+  }, [
+    ssid,
+    password,
+    setHomeSsid,
+    setHomePassword,
+    setFirmwareVersion,
+    setLastStaIp,
+    goConnected,
+  ]);
+
+  const submitting = phase === 'submitting';
 
   return (
     <View style={styles.flex}>
@@ -216,123 +220,113 @@ export default function WifiSetupScreen({navigation}: Props) {
         />
       </Appbar.Header>
 
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled">
-          <Text variant="titleMedium" style={styles.heading}>
-            Put the converter on your WiFi
+      {phase === 'probing' || phase === 'joining-ap' ? (
+        <View style={styles.center}>
+          <ActivityIndicator animating size="large" />
+          <Text variant="bodyMedium" style={styles.centerText}>
+            {status}
           </Text>
-          <Text variant="bodyMedium" style={styles.intro}>
-            Enter your home WiFi name and password. The app connects to the
-            converter and hands it these details, then opens its control panel.
+        </View>
+      ) : phase === 'error' ? (
+        <View style={styles.center}>
+          <Text variant="titleMedium" style={styles.errorTitle}>
+            Can’t reach the converter
           </Text>
-
-          <TextInput
-            label="WiFi name (SSID)"
-            value={ssid}
-            onChangeText={setSsid}
-            mode="outlined"
-            autoCapitalize="none"
-            autoCorrect={false}
-            disabled={busy}
-            style={styles.input}
-          />
-
-          <TextInput
-            label="WiFi password"
-            value={password}
-            onChangeText={setPassword}
-            mode="outlined"
-            autoCapitalize="none"
-            autoCorrect={false}
-            secureTextEntry={!showPassword}
-            disabled={busy}
-            right={
-              <TextInput.Icon
-                icon={showPassword ? 'eye-off' : 'eye'}
-                onPress={() => setShowPassword(v => !v)}
-                forceTextInputFocus={false}
-              />
-            }
-            style={styles.input}
-          />
-          <HelperText type="info" visible>
-            Leave the password blank only for open networks.
-          </HelperText>
-
-          {error ? (
-            <HelperText type="error" visible style={styles.error}>
-              {error}
-            </HelperText>
-          ) : null}
-
-          <Button
-            mode="contained"
-            onPress={handleConnect}
-            disabled={busy}
-            loading={busy}
-            style={styles.button}>
-            {busy ? 'Connecting…' : 'Connect'}
+          <Text variant="bodyMedium" style={styles.centerText}>
+            {error}
+          </Text>
+          <Button mode="contained" onPress={bootstrap} style={styles.retry}>
+            Retry
           </Button>
-
-          {busy ? (
-            <Surface style={styles.statusCard} elevation={1}>
-              <ActivityIndicator animating />
-              <Text variant="bodyMedium" style={styles.statusText}>
-                {status}
-              </Text>
-            </Surface>
-          ) : null}
-        </ScrollView>
-      </KeyboardAvoidingView>
-
-      <Portal>
-        <Dialog
-          visible={manualVisible}
-          onDismiss={() => (manualBusy ? undefined : setManualVisible(false))}>
-          <Dialog.Title>Join the converter’s WiFi</Dialog.Title>
-          <Dialog.Content>
-            <Text variant="bodyMedium" style={styles.dialogText}>
-              Automatic join didn’t work. Please connect manually:
+        </View>
+      ) : (
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <ScrollView
+            contentContainerStyle={styles.content}
+            keyboardShouldPersistTaps="handled">
+            <Text variant="titleMedium" style={styles.heading}>
+              Put the converter on your WiFi
             </Text>
-            <Text variant="bodyMedium">
-              1. Open WiFi settings.{'\n'}
-              2. Join “{FIRMWARE_AP_SSID}” (password “{FIRMWARE_AP_PASS}”).{'\n'}
-              3. Return here and tap Continue.
+            <Text variant="bodyMedium" style={styles.intro}>
+              Enter your home WiFi name and password. The converter joins your
+              network and its control panel opens.
             </Text>
-            {manualError ? (
-              <HelperText type="error" visible style={styles.dialogError}>
-                {manualError}
+
+            <TextInput
+              label="WiFi name (SSID)"
+              value={ssid}
+              onChangeText={setSsid}
+              mode="outlined"
+              autoCapitalize="none"
+              autoCorrect={false}
+              disabled={submitting}
+              style={styles.input}
+            />
+            <TextInput
+              label="WiFi password"
+              value={password}
+              onChangeText={setPassword}
+              mode="outlined"
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry={!showPassword}
+              disabled={submitting}
+              right={
+                <TextInput.Icon
+                  icon={showPassword ? 'eye-off' : 'eye'}
+                  onPress={() => setShowPassword(v => !v)}
+                  forceTextInputFocus={false}
+                />
+              }
+              style={styles.input}
+            />
+            <HelperText type="info" visible>
+              Leave the password blank only for open networks.
+            </HelperText>
+
+            {formError ? (
+              <HelperText type="error" visible style={styles.error}>
+                {formError}
               </HelperText>
             ) : null}
-            {manualBusy ? (
-              <View style={styles.dialogBusy}>
+
+            <Button
+              mode="contained"
+              onPress={handleConnect}
+              disabled={submitting}
+              loading={submitting}
+              style={styles.button}>
+              {submitting ? 'Connecting…' : 'Connect'}
+            </Button>
+
+            {submitting ? (
+              <Surface style={styles.statusCard} elevation={1}>
                 <ActivityIndicator animating />
                 <Text variant="bodyMedium" style={styles.statusText}>
-                  {status || 'Working…'}
+                  {status}
                 </Text>
-              </View>
+              </Surface>
             ) : null}
-          </Dialog.Content>
-          <Dialog.Actions>
-            <Button onPress={openWifiSettings} disabled={manualBusy}>
-              WiFi settings
-            </Button>
-            <Button onPress={handleManualContinue} loading={manualBusy}>
-              Continue
-            </Button>
-          </Dialog.Actions>
-        </Dialog>
-      </Portal>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: {flex: 1},
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  centerText: {marginTop: 16, textAlign: 'center', opacity: 0.8},
+  errorTitle: {marginBottom: 8, textAlign: 'center'},
+  retry: {marginTop: 20},
   content: {padding: 20},
   heading: {marginBottom: 8},
   intro: {marginBottom: 20, opacity: 0.8},
@@ -347,11 +341,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statusText: {marginLeft: 12, flexShrink: 1},
-  dialogText: {marginBottom: 12},
-  dialogError: {marginTop: 8},
-  dialogBusy: {
-    marginTop: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
 });
