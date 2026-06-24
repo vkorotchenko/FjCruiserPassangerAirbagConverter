@@ -15,7 +15,9 @@ PIOENV := $(PIO) run -e $(ENV)
 # Mobile app (mobile/) — React Native needs JDK 17 and node on PATH for Gradle.
 JAVA_HOME_17 := /Library/Java/JavaVirtualMachines/jdk-17.jdk/Contents/Home
 NODE_DIR     := $(shell dirname $(shell which node))
-RELEASE_APK  := mobile/android/app/build/outputs/apk/release/app-release.apk
+# The release APK is named FjOcsSetup-<version>.apk (build.gradle outputFileName),
+# so it varies by version — locate it by glob in this dir rather than hardcoding.
+RELEASE_APK_DIR := mobile/android/app/build/outputs/apk/release
 
 .DEFAULT_GOAL := help
 
@@ -78,11 +80,15 @@ mobile-android-fresh: ## Mobile: adb reverse + Metro in background + debug build
 mobile-android-release: ## Mobile: build a self-contained release APK for sideloading
 	cd mobile/android && JAVA_HOME=$(JAVA_HOME_17) PATH="$(NODE_DIR):$$PATH" ./gradlew assembleRelease
 	@echo ""
-	@if [ ! -f "$(RELEASE_APK)" ]; then echo "❌ No APK found at $(RELEASE_APK)"; exit 1; fi; \
-	echo "✅ Release APK: $(RELEASE_APK)"
+	@apk=$$(find $(RELEASE_APK_DIR) -maxdepth 1 -name '*.apk' | head -1); \
+	if [ -z "$$apk" ]; then echo "❌ No APK found in $(RELEASE_APK_DIR)"; exit 1; fi; \
+	echo "✅ Release APK: $$apk"
 
 mobile-android-release-install: mobile-android-release ## Mobile: build release APK + install on connected device
-	adb install -r "$(RELEASE_APK)"
+	@apk=$$(find $(RELEASE_APK_DIR) -maxdepth 1 -name '*.apk' | head -1); \
+	if [ -z "$$apk" ]; then echo "❌ No APK found in $(RELEASE_APK_DIR)"; exit 1; fi; \
+	echo "Installing $$apk ..."; \
+	adb install -r "$$apk"
 
 mobile-android-bundle: ## Mobile: build a release AAB for the Play Store
 	cd mobile/android && JAVA_HOME=$(JAVA_HOME_17) PATH="$(NODE_DIR):$$PATH" ./gradlew bundleRelease
