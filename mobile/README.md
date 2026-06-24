@@ -63,7 +63,8 @@ mobile/
 │   │   └── AppNavigator.tsx      # Stack: Setup -> WebUi
 │   ├── screens/
 │   │   ├── WifiSetupScreen.tsx   # Landing: SSID/password + connect flow
-│   │   └── WebUiScreen.tsx       # Embedded firmware web UI (WebView)
+│   │   ├── WebUiScreen.tsx       # Embedded firmware web UI (WebView)
+│   │   └── SettingsScreen.tsx    # Saved WiFi, firmware version, app update
 │   ├── services/
 │   │   ├── permissions.ts        # Android runtime WiFi/location permissions
 │   │   ├── wifiManager.ts        # Read SSID, join AP, bind app to WiFi
@@ -113,13 +114,27 @@ npm run lint   # ESLint
 npm test       # Jest
 ```
 
+## Settings
+
+A **Settings** screen (gear icon, top-right of both screens) holds:
+
+- **Saved home WiFi** — the SSID *and* password you entered are saved to the
+  app's private preferences (AsyncStorage) and pre-filled next time, so you
+  don't retype them. A **Clear saved WiFi** button forgets both (it does not
+  change what the converter already stored). Note: AsyncStorage is not encrypted
+  at rest — acceptable for this single-purpose tool.
+- **Converter firmware** — the firmware version, read from `GET /api/info`
+  (`fwVersion`) when the converter is reachable.
+- **App update** — the in-app updater (see below).
+
 ## In-app updates (OTA)
 
-The app can update itself, mirroring the `pao_console_dial` updater:
+The app can update **itself** (not the converter firmware), mirroring the
+`pao_console_dial` updater:
 
 - On launch it checks this repo's **GitHub Releases** (1-hour cached) for a newer
   `mobile-v*` release.
-- The setup screen footer shows the running version and an **Update / Check**
+- The **Settings** screen shows the running version and an **Update / Check**
   button. When a newer release exists, it downloads the APK to cache, verifies
   its **SHA256**, then hands it to the Android package installer.
 - **Android only** — iOS can't sideload APKs, so on iOS the updater just opens
@@ -130,7 +145,7 @@ Key files: `src/services/githubReleases.ts` (release lookup),
 `src/services/mobileAppDownload.ts` (streamed download + verify),
 `src/services/apkInstaller.ts` + `android/.../ApkInstallerModule.kt` (install),
 `src/services/mobileUpdateController.ts` (orchestration),
-`src/components/AppUpdateSection.tsx` (UI).
+`src/components/AppUpdateSection.tsx` (UI), `src/screens/SettingsScreen.tsx`.
 
 ### Cutting a release
 

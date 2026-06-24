@@ -30,7 +30,6 @@ import {
 } from '../services/wifiManager';
 import {postWifi, waitForStation, pingFirmware} from '../services/firmwareApi';
 import {FIRMWARE_AP_SSID, FIRMWARE_AP_PASS} from '../constants';
-import AppUpdateSection from '../components/AppUpdateSection';
 
 type Props = StackScreenProps<RootStackParamList, 'Setup'>;
 
@@ -51,6 +50,7 @@ function messageOf(err: unknown): string {
 
 export default function WifiSetupScreen({navigation}: Props) {
   const setHomeSsid = useAppStore(state => state.setHomeSsid);
+  const setHomePassword = useAppStore(state => state.setHomePassword);
   const setLastStaIp = useAppStore(state => state.setLastStaIp);
   const hydrate = useAppStore(state => state.hydrate);
 
@@ -68,15 +68,22 @@ export default function WifiSetupScreen({navigation}: Props) {
 
   const busy = phase === 'joining' || phase === 'sending' || phase === 'waiting';
 
-  // On mount: load any saved SSID, ask for permissions, and try to pre-fill the
-  // field with the phone's current network (skipping the firmware's own AP).
+  // On mount: load any saved SSID/password, ask for permissions, and try to
+  // pre-fill the SSID with the phone's current network (skipping the firmware's
+  // own AP). A freshly-detected home SSID wins over the saved one.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       await hydrate();
-      const saved = useAppStore.getState().homeSsid;
-      if (!cancelled && saved) {
-        setSsid(saved);
+      const {homeSsid: savedSsid, homePassword: savedPass} =
+        useAppStore.getState();
+      if (!cancelled) {
+        if (savedSsid) {
+          setSsid(savedSsid);
+        }
+        if (savedPass) {
+          setPassword(savedPass);
+        }
       }
       const granted = await requestWifiPermissions();
       const current = granted ? await getCurrentSsid() : null;
@@ -138,6 +145,7 @@ export default function WifiSetupScreen({navigation}: Props) {
     setError(null);
     setManualError(null);
     setHomeSsid(trimmed);
+    setHomePassword(password);
 
     setPhase('joining');
     setStatus(`Joining the converter’s WiFi (${FIRMWARE_AP_SSID})…`);
@@ -164,7 +172,7 @@ export default function WifiSetupScreen({navigation}: Props) {
         setError(messageOf(err));
       }
     }
-  }, [ssid, password, setHomeSsid, continueAfterAp]);
+  }, [ssid, password, setHomeSsid, setHomePassword, continueAfterAp]);
 
   const handleManualContinue = useCallback(async () => {
     setManualBusy(true);
@@ -201,6 +209,11 @@ export default function WifiSetupScreen({navigation}: Props) {
     <View style={styles.flex}>
       <Appbar.Header>
         <Appbar.Content title="FJ OCS Setup" />
+        <Appbar.Action
+          icon="cog"
+          accessibilityLabel="Settings"
+          onPress={() => navigation.navigate('Settings')}
+        />
       </Appbar.Header>
 
       <KeyboardAvoidingView
@@ -273,8 +286,6 @@ export default function WifiSetupScreen({navigation}: Props) {
               </Text>
             </Surface>
           ) : null}
-
-          <AppUpdateSection />
         </ScrollView>
       </KeyboardAvoidingView>
 

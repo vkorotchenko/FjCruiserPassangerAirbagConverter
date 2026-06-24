@@ -6,6 +6,10 @@
 
 #define SERIAL_SPEED 115200
 
+// Firmware identity. Surfaced to the mobile/web client via GET /api/info
+// ("fwVersion"). Bump on each released firmware build.
+#define FIRMWARE_VERSION "1.0.0"
+
 // ============================================================================
 // TARGET BOARD: Adafruit Feather ESP32-S2 (WiFi-only, no Bluetooth)
 // ----------------------------------------------------------------------------

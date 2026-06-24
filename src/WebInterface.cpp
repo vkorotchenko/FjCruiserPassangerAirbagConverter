@@ -67,11 +67,12 @@ static void startWifi() {
 static void setupRoutes() {
     server.on("/api/info", HTTP_GET, [](AsyncWebServerRequest *req) {
         JsonDocument doc;
-        doc["hostname"] = WIFI_HOSTNAME;
-        doc["apIp"]     = WiFi.softAPIP().toString();
-        doc["staIp"]    = WiFi.localIP().toString();
-        doc["staOk"]    = WiFi.isConnected();
-        doc["clients"]  = ws.count();
+        doc["hostname"]  = WIFI_HOSTNAME;
+        doc["fwVersion"] = FIRMWARE_VERSION;
+        doc["apIp"]      = WiFi.softAPIP().toString();
+        doc["staIp"]     = WiFi.localIP().toString();
+        doc["staOk"]     = WiFi.isConnected();
+        doc["clients"]   = ws.count();
         String out;
         serializeJson(doc, out);
         req->send(200, "application/json", out);

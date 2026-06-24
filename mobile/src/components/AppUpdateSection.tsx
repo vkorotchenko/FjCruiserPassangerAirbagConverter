@@ -35,12 +35,18 @@ function formatBytes(n: number | null): string {
 }
 
 /**
- * Footer section for the setup screen: shows the running app version, a
- * check-for-updates affordance, and (when a newer GitHub release exists) drives
- * the download → verify → install self-update flow. Android installs the APK;
- * iOS falls back to opening the release page.
+ * App self-update UI: shows the running app version, a check-for-updates
+ * affordance, and (when a newer GitHub release exists) drives the
+ * download → verify → install flow. Android installs the APK; iOS opens the
+ * release page.
+ *
+ * `embedded` drops the outer Surface/margins so it can sit inside a Dialog.
  */
-export default function AppUpdateSection() {
+export default function AppUpdateSection({
+  embedded = false,
+}: {
+  embedded?: boolean;
+}) {
   const appVersion = useAppStore(s => s.appVersion);
   const latestVersion = useAppStore(s => s.latestAppReleaseVersion);
   const latestUrl = useAppStore(s => s.latestAppReleaseUrl);
@@ -124,8 +130,8 @@ export default function AppUpdateSection() {
 
   const primaryLabel = isAndroid ? 'Download' : 'Open release';
 
-  return (
-    <Surface style={styles.card} elevation={1}>
+  const body = (
+    <>
       <View style={styles.row}>
         <View style={styles.flex}>
           <Text variant="labelLarge">App version</Text>
@@ -230,6 +236,14 @@ export default function AppUpdateSection() {
           </Dialog.Actions>
         </Dialog>
       </Portal>
+    </>
+  );
+
+  return embedded ? (
+    <View style={styles.embedded}>{body}</View>
+  ) : (
+    <Surface style={styles.card} elevation={1}>
+      {body}
     </Surface>
   );
 }
@@ -240,6 +254,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
   },
+  embedded: {paddingTop: 4},
   row: {flexDirection: 'row', alignItems: 'center'},
   flex: {flex: 1},
   dim: {opacity: 0.7},

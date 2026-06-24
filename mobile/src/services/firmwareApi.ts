@@ -3,6 +3,7 @@ import {FIRMWARE_BASE_URL} from '../constants';
 /** Shape of `GET /api/info` from the firmware (src/WebInterface.cpp). */
 export interface FirmwareInfo {
   hostname: string;
+  fwVersion: string;
   apIp: string;
   staIp: string;
   staOk: boolean;

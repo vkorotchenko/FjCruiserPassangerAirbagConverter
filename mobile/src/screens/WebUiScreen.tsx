@@ -68,6 +68,11 @@ export default function WebUiScreen({navigation}: Props) {
         <Appbar.BackAction onPress={leaveToSetup} />
         <Appbar.Content title="FJ OCS Converter" />
         <Appbar.Action icon="refresh" onPress={reload} />
+        <Appbar.Action
+          icon="cog"
+          accessibilityLabel="Settings"
+          onPress={() => navigation.navigate('Settings')}
+        />
       </Appbar.Header>
 
       <View style={styles.flex}>

@@ -2,6 +2,7 @@ import {create} from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const SSID_KEY = 'fjocs.homeSsid';
+const PASS_KEY = 'fjocs.homePassword';
 
 /** Phases of the in-app self-update flow. */
 export type AppUpdateState =
@@ -26,10 +27,15 @@ export interface LatestAppReleaseInput {
 interface AppState {
   /** Last home-WiFi SSID the user entered (remembered across launches). */
   homeSsid: string;
+  /** Last home-WiFi password the user entered (remembered across launches). */
+  homePassword: string;
   /** Last station IP the firmware reported after joining home WiFi. */
   lastStaIp: string | null;
   setHomeSsid: (ssid: string) => void;
+  setHomePassword: (pass: string) => void;
   setLastStaIp: (ip: string | null) => void;
+  /** Forget the saved home-WiFi SSID + password (preferences + state). */
+  clearStoredWifi: () => Promise<void>;
   /** Load persisted values from disk (call once at startup). */
   hydrate: () => Promise<void>;
 
@@ -70,18 +76,34 @@ interface AppState {
 
 export const useAppStore = create<AppState>(set => ({
   homeSsid: '',
+  homePassword: '',
   lastStaIp: null,
   setHomeSsid: ssid => {
     set({homeSsid: ssid});
     AsyncStorage.setItem(SSID_KEY, ssid).catch(() => {});
   },
+  setHomePassword: pass => {
+    set({homePassword: pass});
+    // Stored in app-private preferences (AsyncStorage) so the user need not
+    // retype it. Not encrypted at rest — acceptable for a single-purpose tool.
+    AsyncStorage.setItem(PASS_KEY, pass).catch(() => {});
+  },
   setLastStaIp: ip => set({lastStaIp: ip}),
+  clearStoredWifi: async () => {
+    set({homeSsid: '', homePassword: ''});
+    try {
+      await AsyncStorage.multiRemove([SSID_KEY, PASS_KEY]);
+    } catch {
+      // ignore — non-fatal
+    }
+  },
   hydrate: async () => {
     try {
-      const saved = await AsyncStorage.getItem(SSID_KEY);
-      if (saved) {
-        set({homeSsid: saved});
-      }
+      const [ssid, pass] = await Promise.all([
+        AsyncStorage.getItem(SSID_KEY),
+        AsyncStorage.getItem(PASS_KEY),
+      ]);
+      set({homeSsid: ssid ?? '', homePassword: pass ?? ''});
     } catch {
       // ignore — non-fatal
     }
