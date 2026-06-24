@@ -72,6 +72,34 @@ def enableProguardInReleaseBuilds = false
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
+// Derive versionName / versionCode from the latest `mobile-v*` git tag so local
+// release builds carry a meaningful version. CI overrides these via
+// -PversionName / -PversionCode (see .github/workflows/mobile-release.yml).
+def parseGitVersion = { ->
+    def fallback = [name: "0.0.1-dev", code: 1]
+    try {
+        def proc = ['git', 'describe', '--tags', '--match', 'mobile-v*', '--long', '--dirty']
+            .execute(null, rootProject.projectDir)
+        proc.waitFor()
+        if (proc.exitValue() != 0) return fallback
+        def desc = proc.text.trim()
+        def m = desc =~ /^mobile-v(\d+)\.(\d+)\.(\d+)-(\d+)-g([0-9a-f]+)(-dirty)?$/
+        if (!m.matches()) return fallback
+        def major = m[0][1].toInteger()
+        def minor = m[0][2].toInteger()
+        def patch = m[0][3].toInteger()
+        def commits = m[0][4].toInteger()
+        def sha = m[0][5]
+        def dirty = m[0][6] != null
+        def code = major * 10000 + minor * 100 + patch + commits
+        def name = "${major}.${minor}.${patch}+${commits}-g${sha}" + (dirty ? "-dirty" : "")
+        return [name: name, code: code]
+    } catch (Exception e) {
+        return fallback
+    }
+}
+def gitVersion = parseGitVersion()
+
 android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
@@ -82,8 +110,10 @@ android {
         applicationId "com.fjocssetup"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // CI injects -PversionCode / -PversionName from the release tag; local
+        // builds fall back to the git-derived values above.
+        versionCode project.hasProperty('versionCode') ? project.versionCode.toInteger() : gitVersion.code
+        versionName project.hasProperty('versionName') ? project.versionName : gitVersion.name
     }
     signingConfigs {
         debug {
@@ -98,11 +128,17 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
+            // Signed with the committed debug keystore so local + CI builds share
+            // one signature, which is what makes sideloaded OTA updates install
+            // over the top. NOT eligible for Play Store; fine for sideload-only.
             signingConfig signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            android.applicationVariants.all { variant ->
+                variant.outputs.all {
+                    outputFileName = "FjOcsSetup-${variant.versionName}.apk"
+                }
+            }
         }
     }
 }

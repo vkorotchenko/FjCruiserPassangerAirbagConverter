@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FileProvider path config for the in-app APK installer. The downloaded APK
+  lives in the app's private cache (react-native-blob-util CacheDir), so we
+  expose cache-path and files-path. External dirs are deliberately omitted.
+-->
+<paths>
+    <cache-path name="apk_cache" path="."/>
+    <files-path name="apk_files" path="."/>
+</paths>

@@ -113,6 +113,39 @@ npm run lint   # ESLint
 npm test       # Jest
 ```
 
+## In-app updates (OTA)
+
+The app can update itself, mirroring the `pao_console_dial` updater:
+
+- On launch it checks this repo's **GitHub Releases** (1-hour cached) for a newer
+  `mobile-v*` release.
+- The setup screen footer shows the running version and an **Update / Check**
+  button. When a newer release exists, it downloads the APK to cache, verifies
+  its **SHA256**, then hands it to the Android package installer.
+- **Android only** — iOS can't sideload APKs, so on iOS the updater just opens
+  the GitHub release page. The first install prompts for the "install unknown
+  apps" permission.
+
+Key files: `src/services/githubReleases.ts` (release lookup),
+`src/services/mobileAppDownload.ts` (streamed download + verify),
+`src/services/apkInstaller.ts` + `android/.../ApkInstallerModule.kt` (install),
+`src/services/mobileUpdateController.ts` (orchestration),
+`src/components/AppUpdateSection.tsx` (UI).
+
+### Cutting a release
+
+From the repo root, bump + tag + push (CI does the rest):
+
+```bash
+make release-mobile-patch   # or -minor / -major
+```
+
+Pushing a `mobile-v*` tag triggers `.github/workflows/mobile-release.yml`, which
+builds a signed APK, writes a SHA256 sidecar, and publishes a GitHub Release with
+`fj-ocs-setup-<version>.apk` + `.apk.sha256`. The APK is signed with the committed
+debug keystore so every build shares one signature (required for sideloaded OTA
+updates to install over the top) — it is **not** Play Store eligible.
+
 ## Platform notes
 
 This app is **Android-first**. Reading the current WiFi SSID and joining the

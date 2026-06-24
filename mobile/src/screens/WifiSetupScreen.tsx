@@ -30,6 +30,7 @@ import {
 } from '../services/wifiManager';
 import {postWifi, waitForStation, pingFirmware} from '../services/firmwareApi';
 import {FIRMWARE_AP_SSID, FIRMWARE_AP_PASS} from '../constants';
+import AppUpdateSection from '../components/AppUpdateSection';
 
 type Props = StackScreenProps<RootStackParamList, 'Setup'>;
 
@@ -272,6 +273,8 @@ export default function WifiSetupScreen({navigation}: Props) {
               </Text>
             </Surface>
           ) : null}
+
+          <AppUpdateSection />
         </ScrollView>
       </KeyboardAvoidingView>
 
